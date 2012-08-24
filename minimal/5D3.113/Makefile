@@ -1,10 +1,10 @@
-#Makefile for 5D Mark III firmware 112
+#Makefile for 5D Mark III firmware 113
 
 TOP_DIR=../..
 include $(TOP_DIR)/Makefile.top
 
 #must be defined first because they are used in Makefile.inc, for $(VERSION) for example
-FW_VERSION=112
+FW_VERSION=113
 MODEL=5D3
 ML_VERSION=unified1 
 
@@ -19,44 +19,8 @@ PLATFORM_DIR=$(PLATFORM_PATH)/$(MODEL).$(FW_VERSION)
 ML_OBJS-y = \
 	magiclantern.lds \
 	$(SRC_DIR)/entry.o \
-	boot-hack.o \
+	minimal.o \
 	stubs.o \
-	version.o \
-	bmp.o \
-	font-dyn.o \
-	config.o \
-	menu.o \
-	debug.o \
-	stdio.o \
-	bitrate.o \
-	tweaks.o \
-	lens.o \
-	property.o \
-	propvalues.o \
-	gui.o \
-	gui-common.o \
-	misc.o \
-	picstyle.o \
-	cfn.o \
-	zebra.o \
-	shoot.o \
-	chdk-gui_draw.o \
-	movtweaks.o \
-	my_memset.o \
-	menuhelp.o \
-	menuindex.o \
-	focus.o \
-	notify_box.o \
-	dialog_test.o \
-	vram.o \
-	aj_port.o \
-	lv-img-engio.o \
-	fps-engio.o \
-	tasks.o \
-	state-object.o \
-	hdr.o \
-	lv-img-engio.o \
-	beep.o \
 
 #include generic rules and definitions
 #TOP_DIR defined in upper Makefile
@@ -71,4 +35,4 @@ RESTARTSTART	= 0x00069500
 x: 
 	make clean
 	make autoexec.bin
-	python ../../../dumper/build_fir.py -r ../../../dumper/5D300112.FIR autoexec.bin ml-5D3-112.fir
+	python ../../../dumper/build_fir.py -r ../../../dumper/5D300113.FIR autoexec.bin ml-5D3-113.fir
