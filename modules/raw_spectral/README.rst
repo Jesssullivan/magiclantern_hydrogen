@@ -1,6 +1,10 @@
 raw_spectral
 ============
 
+:Author: magiclantern_hydrogen
+:License: GPL
+:Summary: Per-frame calibration metadata (RAWX MLV block emitter)
+
 Per-frame calibration metadata module for spectral and astrophotography
 workflows on heavily-modified Canon DSLRs.
 

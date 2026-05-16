@@ -1,6 +1,10 @@
 af_logger
 =========
 
+:Author: magiclantern_hydrogen
+:License: GPL
+:Summary: AF / lens / TTL telemetry (AFLG MLV block emitter)
+
 AF / lens / TTL telemetry logging module for future robotic optics
 actuation workflows.
 
