@@ -83,3 +83,35 @@ jobs:
           ATTIC_CACHE: ${{ vars.ATTIC_CACHE || 'main' }}
           ATTIC_PUBLIC_KEY: ${{ secrets.ATTIC_PUBLIC_KEY }}
         run: bash scripts/cache-attachment-contract.sh
+
+  zig-tools:
+    # Build + test the host-side Zig tools (raw-stack, af-log). Linux
+    # avoids the macOS 26.5 SDK linker friction documented in TIN-1241.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        tool: [raw-stack, af-log]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - uses: DeterminateSystems/nix-installer-action@v14
+        with:
+          extra-conf: |
+            experimental-features = nix-command flakes
+            extra-substituters = ${{ vars.ATTIC_SERVER || 'https://nix-cache.tinyland.dev' }}/${{ vars.ATTIC_CACHE || 'main' }}
+            extra-trusted-public-keys = ${{ secrets.ATTIC_PUBLIC_KEY }}
+      - name: zig build test (${{ matrix.tool }})
+        working-directory: tools/${{ matrix.tool }}
+        run: nix shell nixpkgs#zig --command zig build test
+      - name: zig build install (${{ matrix.tool }})
+        working-directory: tools/${{ matrix.tool }}
+        run: nix shell nixpkgs#zig --command zig build
+      - name: upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.tool }}-linux
+          path: tools/${{ matrix.tool }}/zig-out/bin/${{ matrix.tool }}
+          if-no-files-found: error
+          retention-days: 14
