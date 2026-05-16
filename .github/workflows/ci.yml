@@ -115,3 +115,21 @@ jobs:
           path: tools/${{ matrix.tool }}/zig-out/bin/${{ matrix.tool }}
           if-no-files-found: error
           retention-days: 14
+
+  zig-tools-integration:
+    # End-to-end: build both Zig tools, generate a synthetic MLV
+    # fixture, decode it, assert expected counts. Catches block-layout
+    # regressions without needing firmware in the loop.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - uses: DeterminateSystems/nix-installer-action@v14
+        with:
+          extra-conf: |
+            experimental-features = nix-command flakes
+            extra-substituters = ${{ vars.ATTIC_SERVER || 'https://nix-cache.tinyland.dev' }}/${{ vars.ATTIC_CACHE || 'main' }}
+            extra-trusted-public-keys = ${{ secrets.ATTIC_PUBLIC_KEY }}
+      - name: integration round-trip
+        run: nix shell nixpkgs#zig --command bash scripts/integration-test-zig-tools.sh
