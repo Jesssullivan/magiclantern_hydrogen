@@ -67,6 +67,14 @@ if ! echo "$SUMMARY_OUT" | grep -q "6 AFLG blocks total"; then
   exit 1
 fi
 
+echo "==> raw-stack stack on fixture (RAWX aggregate):"
+STACK_OUT="$("$RAW_STACK" stack "$FIXTURE")"
+echo "$STACK_OUT"
+if ! echo "$STACK_OUT" | grep -q "DIGITAL_GAIN     yes"; then
+  echo "FAIL: expected stack output to report DIGITAL_GAIN=yes" >&2
+  exit 1
+fi
+
 COMPLEX="$WORKDIR/complex.mlv"
 echo "==> Generating complex fixture at $COMPLEX"
 "$RAW_STACK" fixture "$COMPLEX" complex

@@ -16,6 +16,7 @@
 const std = @import("std");
 const mlv = @import("mlv.zig");
 const fixture = @import("fixture.zig");
+const stack_mod = @import("stack.zig");
 
 const VERSION = "0.1.0";
 
@@ -57,7 +58,7 @@ fn printUsage(w: anytype) !void {
         \\
         \\Subcommands:
         \\  inspect FILE.mlv            Dump block taxonomy and RAWX/AFLG summary
-        \\  stack [OPTS] FILE...        Multi-frame stack with sensor-aware noise model (stub)
+        \\  stack FILE...               Aggregate RAWX metadata across input MLVs
         \\  demosaic-skip FILE          Spectral mode → FITS (stub)
         \\  calibrate KIND DIR          Build dark/flat/bias frames (stub)
         \\  fixture OUT.mlv             Write a synthetic RAWX+AFLG fixture (for tests)
@@ -103,11 +104,7 @@ pub fn main() !u8 {
             return 0;
         },
         .inspect => return try runInspect(allocator, args[2..]),
-        .stack => {
-            try stderr.print("raw-stack stack: not yet implemented (TIN-1223).\n", .{});
-            try stderr.print("Block taxonomy and RAWX decoder are in place; stacker is the next slice.\n", .{});
-            return 1;
-        },
+        .stack => return try runStack(allocator, args[2..]),
         .demosaic_skip => {
             try stderr.print("raw-stack demosaic-skip: not yet implemented (TIN-1223).\n", .{});
             return 1;
@@ -118,6 +115,28 @@ pub fn main() !u8 {
         },
         .fixture => return try runFixture(args[2..]),
     }
+}
+
+fn runStack(allocator: std.mem.Allocator, args: [][:0]u8) !u8 {
+    const stderr = std.io.getStdErr().writer();
+    if (args.len < 1) {
+        try stderr.print("raw-stack stack: expected at least 1 MLV file\n", .{});
+        return 2;
+    }
+
+    var stats = std.ArrayList(stack_mod.FileStats).init(allocator);
+    defer stats.deinit();
+
+    for (args) |path| {
+        const s = stack_mod.stackFile(allocator, path, .{}) catch |err| {
+            try stderr.print("raw-stack stack: '{s}': {s}\n", .{ path, @errorName(err) });
+            return 1;
+        };
+        try stats.append(s);
+    }
+
+    try stack_mod.renderStats(std.io.getStdOut().writer(), stats.items);
+    return 0;
 }
 
 fn runFixture(args: [][:0]u8) !u8 {
