@@ -1,5 +1,5 @@
-af_logger
-=========
+aflogger
+========
 
 :Author: magiclantern_hydrogen
 :License: GPL

@@ -3,7 +3,7 @@
 # Linear: TIN-1228 (Sprint C2). See README.rst for status.
 
 MODULE_NAME = aflogger
-MODULE_OBJS = $(BUILD_DIR)/af_logger.o
+MODULE_OBJS = $(BUILD_DIR)/aflogger.o
 TOP_DIR = ../..
 
 include $(TOP_DIR)/modules/Makefile

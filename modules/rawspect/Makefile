@@ -3,7 +3,7 @@
 # Linear: TIN-1222 (Sprint B2). See README.rst for status.
 
 MODULE_NAME = rawspect
-MODULE_OBJS = $(BUILD_DIR)/raw_spectral.o
+MODULE_OBJS = $(BUILD_DIR)/rawspect.o
 TOP_DIR = ../..
 
 include $(TOP_DIR)/modules/Makefile
