@@ -15,7 +15,6 @@
 
 #include <dryos.h>
 #include <module.h>
-#include <console.h>
 #include <property.h>
 
 #include "mlv.h"
@@ -102,15 +101,12 @@ static void raw_spectral_starting(uint32_t event, void *ctx, mlv_hdr_t *hdr)
 {
     (void) event; (void) ctx; (void) hdr;
     g_recording = 1;
-    console_printf("raw_spectral: RAWX emission ON (recording started).\n");
 }
 
 static void raw_spectral_stopped(uint32_t event, void *ctx, mlv_hdr_t *hdr)
 {
     (void) event; (void) ctx; (void) hdr;
     g_recording = 0;
-    console_printf("raw_spectral: RAWX emission OFF. %u vsync ticks observed.\n",
-                   g_snapshot.vsync_count);
 }
 
 static unsigned int raw_spectral_init(void)
@@ -121,7 +117,6 @@ static unsigned int raw_spectral_init(void)
     mlv_rec_register_cbr(MLV_REC_EVENT_STARTING, &raw_spectral_starting,  NULL);
     mlv_rec_register_cbr(MLV_REC_EVENT_STOPPED,  &raw_spectral_stopped,   NULL);
     mlv_rec_register_cbr(MLV_REC_EVENT_VIDF,     &raw_spectral_vidf_cbr,  NULL);
-    console_printf("raw_spectral: init. CBR_VSYNC + mlv_rec CBRs registered.\n");
     return 0;
 }
 

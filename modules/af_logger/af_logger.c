@@ -24,7 +24,6 @@
 
 #include <dryos.h>
 #include <module.h>
-#include <console.h>
 #include <property.h>
 
 #include "mlv.h"
@@ -151,15 +150,12 @@ static void af_logger_starting(uint32_t event, void *ctx, mlv_hdr_t *hdr)
 {
     (void) event; (void) ctx; (void) hdr;
     g_recording = 1;
-    console_printf("af_logger: AFLG emission ON (recording started).\n");
 }
 
 static void af_logger_stopped(uint32_t event, void *ctx, mlv_hdr_t *hdr)
 {
     (void) event; (void) ctx; (void) hdr;
     g_recording = 0;
-    console_printf("af_logger: AFLG emission OFF. %u total prop events.\n",
-                   g_af.event_count);
 }
 
 static unsigned int af_logger_init(void)
@@ -168,7 +164,6 @@ static unsigned int af_logger_init(void)
     g_af.event_count = 0;
     mlv_rec_register_cbr(MLV_REC_EVENT_STARTING, &af_logger_starting, NULL);
     mlv_rec_register_cbr(MLV_REC_EVENT_STOPPED,  &af_logger_stopped,  NULL);
-    console_printf("af_logger: init. PROP_HANDLERs + mlv_rec CBRs registered.\n");
     return 0;
 }
 
