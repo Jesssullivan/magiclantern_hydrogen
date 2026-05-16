@@ -25,6 +25,7 @@
 #include <dryos.h>
 #include <module.h>
 #include <property.h>
+#include <raw.h>
 
 #include "mlv.h"
 #include "mlv_rec_interface.h"
@@ -189,9 +190,4 @@ MODULE_PROPHANDLERS_START()
     MODULE_PROPHANDLER(PROP_LENS_DYNAMIC_DATA)
 MODULE_PROPHANDLERS_END()
 
-MODULE_STRINGS_START()
-    MODULE_STRING("Description", "AF/lens/TTL telemetry (AFLG block emitter)")
-    MODULE_STRING("Author", "magiclantern_hydrogen")
-    MODULE_STRING("License", "GPL")
-    MODULE_STRING("Status", "Sprint C2 first-cut, see Linear TIN-1228")
-MODULE_STRINGS_END()
+/* MODULE_STRINGS is auto-generated from README.rst. */
