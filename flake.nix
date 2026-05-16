@@ -94,7 +94,9 @@
           direnv
           nix-direnv
           git
+          git-lfs       # required: .gitattributes routes binaries through LFS
           git-cliff
+          git-filter-repo
           pre-commit
           bazel-buildtools
           bazelisk
