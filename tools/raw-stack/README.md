@@ -20,15 +20,25 @@ zig build
 
 Or run the tests directly: `zig build test`.
 
+### Zig version pin
+
+Both `raw-stack` and `af-log` target **Zig 0.14**. nixpkgs ships a
+`zig_0_14` attribute (currently 0.14.1) which is what CI uses
+(`nix shell nixpkgs#zig_0_14 --command zig build`). The default
+`nixpkgs#zig` attribute tracks the latest (0.16+ as of 2026-05),
+which removed `std.heap.GeneralPurposeAllocator` and restructured
+`std.io` significantly. Until we adapt the tools or the macOS Zig
+SDK plumbing issue is resolved, stay on 0.14.
+
 ### macOS local-build caveat
 
 On macOS with the MacOSX 26.5 SDK (and likely later), `zig build` fails
 with linker errors for libc symbols (`_fork`, `_free`, `_getcwd`, etc.).
 Both `nixpkgs#zig` (0.15.2) and `nixpkgs#zig_0_14` (0.14.1) exhibit this;
 the root cause is in the nixpkgs Darwin SDK plumbing and is independent
-of our code. The Zig sources here are syntactically valid for 0.14 and
-0.15 (verified by `zig` accepting the `build.zig` definition); the
-issue surfaces only at the link step.
+of our code. The Zig sources here are syntactically valid for 0.14
+(verified by `zig` accepting the `build.zig` definition); the issue
+surfaces only at the link step.
 
 Workarounds while this is open:
 

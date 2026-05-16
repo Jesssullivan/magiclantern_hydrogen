@@ -104,10 +104,10 @@ jobs:
             extra-trusted-public-keys = ${{ secrets.ATTIC_PUBLIC_KEY }}
       - name: zig build test (${{ matrix.tool }})
         working-directory: tools/${{ matrix.tool }}
-        run: nix shell nixpkgs#zig --command zig build test
+        run: nix shell nixpkgs#zig_0_14 --command zig build test
       - name: zig build install (${{ matrix.tool }})
         working-directory: tools/${{ matrix.tool }}
-        run: nix shell nixpkgs#zig --command zig build
+        run: nix shell nixpkgs#zig_0_14 --command zig build
       - name: upload binary
         uses: actions/upload-artifact@v4
         with:
@@ -132,4 +132,4 @@ jobs:
             extra-substituters = ${{ vars.ATTIC_SERVER || 'https://nix-cache.tinyland.dev' }}/${{ vars.ATTIC_CACHE || 'main' }}
             extra-trusted-public-keys = ${{ secrets.ATTIC_PUBLIC_KEY }}
       - name: integration round-trip
-        run: nix shell nixpkgs#zig --command bash scripts/integration-test-zig-tools.sh
+        run: nix shell nixpkgs#zig_0_14 --command bash scripts/integration-test-zig-tools.sh

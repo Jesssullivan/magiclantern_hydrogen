@@ -2,7 +2,7 @@
     .name = .raw_stack,
     .version = "0.1.0",
     .fingerprint = 0x7780872833f04d91,
-    .minimum_zig_version = "0.15.0",
+    .minimum_zig_version = "0.14.0",
     .paths = .{
         "build.zig",
         "build.zig.zon",
