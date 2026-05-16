@@ -147,9 +147,7 @@ fn runFixture(args: [][:0]u8) !u8 {
     }
     var complex = false;
     if (args.len == 2) {
-        if (std.mem.eql(u8, args[1], "complex")) complex = true
-        else if (std.mem.eql(u8, args[1], "simple")) complex = false
-        else {
+        if (std.mem.eql(u8, args[1], "complex")) complex = true else if (std.mem.eql(u8, args[1], "simple")) complex = false else {
             try stderr.print("raw-stack fixture: 2nd arg must be 'complex' or 'simple'\n", .{});
             return 2;
         }

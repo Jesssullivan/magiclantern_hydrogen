@@ -49,8 +49,9 @@ jobs:
           - 5D4.133
     steps:
       - uses: actions/checkout@v4
-        with:
-          lfs: true   # firmware build links against LFS-tracked dietlibc.a / libc.a / libm.a
+        # .a libs are now regular git blobs (LFS reverted; see commit
+        # 5f153c57f9). data/vram/xy.tiff remains as an LFS pointer but
+        # the firmware build does not touch it, so lfs: false is fine.
       - uses: DeterminateSystems/nix-installer-action@v14
         with:
           extra-conf: |

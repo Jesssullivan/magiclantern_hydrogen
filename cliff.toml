@@ -38,20 +38,20 @@ conventional_commits = true
 filter_unconventional = false
 split_commits = false
 commit_parsers = [
-    { message = "^feat", group = "Features" },
-    { message = "^fix", group = "Bug Fixes" },
-    { message = "^docs", group = "Documentation" },
-    { message = "^perf", group = "Performance" },
-    { message = "^refactor", group = "Refactor" },
-    { message = "^style", group = "Style" },
-    { message = "^test", group = "Tests" },
-    { message = "^build", group = "Build System" },
-    { message = "^ci", group = "CI" },
-    { message = "^chore\\(release\\)", skip = true },
-    { message = "^chore", group = "Chores" },
-    { message = "^wip", skip = true },
-    { message = "^Merge", skip = true },
-    { message = ".*", group = "Other" },
+  { message = "^feat", group = "Features" },
+  { message = "^fix", group = "Bug Fixes" },
+  { message = "^docs", group = "Documentation" },
+  { message = "^perf", group = "Performance" },
+  { message = "^refactor", group = "Refactor" },
+  { message = "^style", group = "Style" },
+  { message = "^test", group = "Tests" },
+  { message = "^build", group = "Build System" },
+  { message = "^ci", group = "CI" },
+  { message = "^chore\\(release\\)", skip = true },
+  { message = "^chore", group = "Chores" },
+  { message = "^wip", skip = true },
+  { message = "^Merge", skip = true },
+  { message = ".*", group = "Other" },
 ]
 protect_breaking_commits = true
 filter_commits = false
@@ -62,7 +62,7 @@ sort_commits = "newest"
 # Drop AI attribution noise that may slip into commit trailers despite
 # repo policy.
 commit_preprocessors = [
-    { pattern = "Co-Authored-By:.*", replace = "" },
-    { pattern = "Co-authored-by:.*", replace = "" },
-    { pattern = "🤖[^\n]*", replace = "" },
+  { pattern = "Co-Authored-By:.*", replace = "" },
+  { pattern = "Co-authored-by:.*", replace = "" },
+  { pattern = "🤖[^\n]*", replace = "" },
 ]

@@ -27,7 +27,4 @@ includes = ["*.toml"]
 [formatter.zig]
 command = "zig"
 options = ["fmt"]
-includes = [
-    "tools/raw-stack/**/*.zig",
-    "tools/af-log/**/*.zig",
-]
+includes = ["tools/raw-stack/**/*.zig", "tools/af-log/**/*.zig"]
