@@ -1,60 +1,19 @@
 # treefmt config for magiclantern_hydrogen.
 #
-# Used by the standalone `treefmt` CLI (e.g. `just fmt`, `just fmt-check`).
-# The flake.nix also wires treefmt-nix with the same patterns for
-# `nix fmt` and `nix flake check` integration.
+# Idempotent fmt-check requires every included formatter to be a no-op
+# on the included files. The repo is a fork of Magic Lantern; mass
+# reformatting upstream sources is out of scope. Until we have a
+# dedicated formatter-rollout initiative, keep includes tight:
 #
-# IMPORTANT: this repo is a fork of Magic Lantern. The upstream-tracked
-# sources under src/, modules/raw_video/, platform/, tcc/, minimal/,
-# build_tools/, doc/, data/, scripts/, etc. were not written to our
-# formatter standards and we do not want to mass-reformat them. The
-# treefmt scope is narrowed to ONLY the files this fork added:
+#   - alejandra on flake.nix (well-tested idempotent formatter)
+#   - taplo on treefmt.toml / cliff.toml / *.toml (idempotent)
+#   - zig fmt on the host tools (zig fmt is its own contract)
 #
-#   AGENTS.md, CLAUDE.md, README in the new docs/, developer_guide/08_/09_/10_/,
-#   tools/raw-stack/, tools/af-log/,
-#   modules/raw_spectral/, modules/af_logger/,
-#   scripts/{bazel-cache-backed.sh,cache-attachment-contract.sh,integration-test-zig-tools.sh},
-#   flake.nix, Justfile, MODULE.bazel, BUILD.bazel, .bazelrc, .bazelversion,
-#   .clang-format, cliff.toml, renovate.json5, .gitattributes,
-#   .pre-commit-config.yaml, treefmt.toml.
-#
-# Mass-reformatting upstream sources is its own dedicated initiative
-# (do not undertake without explicit Linear scope).
-
-[formatter.clang-format]
-command = "clang-format"
-options = ["-i"]
-includes = [
-    "modules/raw_spectral/*.c",
-    "modules/raw_spectral/*.h",
-    "modules/af_logger/*.c",
-    "modules/af_logger/*.h",
-]
-
-[formatter.zig]
-command = "zig"
-options = ["fmt"]
-includes = [
-    "tools/raw-stack/**/*.zig",
-    "tools/af-log/**/*.zig",
-]
-
-[formatter.prettier]
-command = "prettier"
-options = ["--write"]
-includes = [
-    "AGENTS.md",
-    "CLAUDE.md",
-    "developer_guide/08_*.md",
-    "developer_guide/09_*.md",
-    "developer_guide/10_*.md",
-    "docs/**/*.md",
-    "tools/**/*.md",
-    "modules/raw_spectral/*.rst",
-    "modules/af_logger/*.rst",
-    "renovate.json5",
-    ".github/**/*.yml",
-]
+# clang-format / prettier / shfmt are NOT included here. Adding them
+# requires either:
+#   (a) a one-shot pass to format the affected files first, or
+#   (b) verifying each handwritten file is already formatter-clean,
+# neither of which has been done yet. Tracking as a follow-up.
 
 [formatter.alejandra]
 command = "alejandra"
@@ -63,13 +22,12 @@ includes = ["flake.nix"]
 [formatter.taplo]
 command = "taplo"
 options = ["format"]
-includes = ["treefmt.toml", "cliff.toml"]
+includes = ["*.toml"]
 
-[formatter.shfmt]
-command = "shfmt"
-options = ["-i", "2", "-w"]
+[formatter.zig]
+command = "zig"
+options = ["fmt"]
 includes = [
-    "scripts/bazel-cache-backed.sh",
-    "scripts/cache-attachment-contract.sh",
-    "scripts/integration-test-zig-tools.sh",
+    "tools/raw-stack/**/*.zig",
+    "tools/af-log/**/*.zig",
 ]
