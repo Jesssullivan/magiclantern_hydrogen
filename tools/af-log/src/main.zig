@@ -13,6 +13,7 @@
 const std = @import("std");
 const mlv = @import("mlv.zig");
 const tl = @import("timeline.zig");
+const detect_mod = @import("detect.zig");
 
 const VERSION = "0.1.0";
 
@@ -93,12 +94,35 @@ pub fn main() !u8 {
         },
         .replay => return try runReplay(allocator, args[2..]),
         .summary => return try runSummary(allocator, args[2..]),
-        .detect => {
-            try stderr.print("af-log detect: not yet implemented (TIN-1230).\n", .{});
-            try stderr.print("Pattern classifier (focus-bracket / tracking / hunting) is the next slice.\n", .{});
-            return 1;
-        },
+        .detect => return try runDetect(allocator, args[2..]),
     }
+}
+
+fn runDetect(allocator: std.mem.Allocator, args: [][:0]u8) !u8 {
+    var file = openFile(args, "detect") catch return 2;
+    defer file.close();
+
+    var reader = mlv.Reader.init(allocator, file.reader().any());
+    defer reader.deinit();
+
+    var events = std.ArrayList(detect_mod.Event).init(allocator);
+    defer events.deinit();
+
+    while (try reader.next()) |hdr| {
+        if (mlv.blockTypeEquals(hdr.block_type, "AFLG")) {
+            const a = try reader.readAflg(hdr);
+            try events.append(.{ .ts = hdr.timestamp, .aflg = a });
+        } else {
+            try reader.skipBlockBody(hdr);
+        }
+    }
+
+    const detections = try detect_mod.detect(allocator, events.items, .{});
+    defer allocator.free(detections);
+
+    const stdout = std.io.getStdOut().writer();
+    try detect_mod.renderDetections(stdout, detections);
+    return 0;
 }
 
 fn openFile(args: [][:0]u8, name: []const u8) !std.fs.File {
