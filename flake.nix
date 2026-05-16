@@ -7,7 +7,9 @@
 
     zig-overlay = {
       url = "github:mitchellh/zig-overlay";
-      inputs.nixpkgs.follows = "nixpkgs";
+      # Do not follow nixpkgs — zig-overlay tracks newer nixpkgs internals
+      # (pkgs/development/compilers/zig/passthru.nix) that aren't on
+      # nixos-24.11. Mirrors the oauth-mux / zig-crypto pattern.
       inputs.flake-utils.follows = "flake-utils";
     };
 
