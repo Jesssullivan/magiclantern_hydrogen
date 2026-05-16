@@ -1,3 +1,69 @@
+# magiclantern_hydrogen — git attributes
+#
+# Normalize line endings, mark binaries, prepare for Git LFS migration
+# (Sprint A5 / TIN-1218).
+
+* text=auto eol=lf
+# ---------------------------------------------------------------------------
+# Text formats
+*.c           text eol=lf
+*.h           text eol=lf
+*.cpp         text eol=lf
+*.hpp         text eol=lf
+*.zig         text eol=lf
+*.py          text eol=lf
+*.lua         text eol=lf
+*.sh          text eol=lf
+*.md          text eol=lf
+*.rst         text eol=lf
+*.yaml        text eol=lf
+*.yml         text eol=lf
+*.toml        text eol=lf
+*.json        text eol=lf
+*.json5       text eol=lf
+*.nix         text eol=lf
+*.bazel       text eol=lf
+*.bzl         text eol=lf
+*.bazelrc     text eol=lf
+*.bazelversion text eol=lf
+Makefile      text eol=lf
+Justfile      text eol=lf
+flake.nix     text eol=lf
+flake.lock    text eol=lf
+# Tabs are syntactically significant in Makefiles.
+Makefile      whitespace=tab-in-indent
+Makefile.*    whitespace=tab-in-indent
+# Binary formats (no LF normalization, no diff)
+*.png         binary
+*.jpg         binary
+*.jpeg        binary
+*.bmp         binary
+*.tiff        binary
+*.tif         binary
+*.gif         binary
+*.ico         binary
+*.pdf         binary
+*.zip         binary
+*.tar         binary
+*.gz          binary
+*.xz          binary
+*.bz2         binary
+*.bin         binary
+*.fir         binary
+*.qcow2       binary
+*.a          binary
+*.o          binary
+*.elf         binary
+*.dis         binary
+*.raw         binary
+*.dat         binary
+# LFS candidates (enable after A5 decision; see Linear TIN-1218).
+# When `git lfs install` is run, uncomment to migrate.
+# *.fir       filter=lfs diff=lfs merge=lfs -text
+# *.qcow2     filter=lfs diff=lfs merge=lfs -text
+# *.tiff      filter=lfs diff=lfs merge=lfs -text
+# ROM0.map    filter=lfs diff=lfs merge=lfs -text
+# src/libs/arm-none-eabi-*/*.a filter=lfs diff=lfs merge=lfs -text
 data/vram/*.tiff filter=lfs diff=lfs merge=lfs -text
 *.a filter=lfs diff=lfs merge=lfs -text
 ROM0.map !text !filter !merge !diff

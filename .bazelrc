@@ -1,0 +1,61 @@
+# magiclantern_hydrogen — Bazel Configuration
+# ===========================================
+#
+# Routine Bazel work runs through `just bazel-build-cached`, which sources
+# BAZEL_REMOTE_CACHE / BAZEL_REMOTE_EXECUTOR from the environment after the
+# strict cache-attachment contract validates. Mirrors the contract in
+# ../GloriousFlywheel/.bazelrc.
+
+# Bzlmod is the source of truth for module deps.
+common --enable_bzlmod
+
+# Build settings.
+build --jobs=auto
+build --verbose_failures
+
+# Resolve C/C++ toolchains via the platforms layer so future firmware
+# builds can register hermetic ARM toolchains without touching downstream
+# BUILD files.
+build --incompatible_enable_cc_toolchain_resolution
+
+# Local disk cache for compatibility (cold runs without remote cache).
+build --disk_cache=~/.cache/bazel/magiclantern-hydrogen
+
+# Async remote cache for better performance.
+build --experimental_remote_cache_async
+
+# Guard against concurrent changes during builds.
+build --experimental_guard_against_concurrent_changes
+
+# Be lenient with transient network failures during repository fetches so a
+# flaky upstream archive does not fail the proof before remote action cache
+# hits start saving work.
+common --experimental_repository_downloader_retries=5
+common --http_timeout_scaling=2.0
+
+# ============================================================================
+# Remote Cache Configuration
+# ============================================================================
+# Bazel rc files do not expand shell environment variables in option values.
+# scripts/bazel-cache-backed.sh (planned in TIN-1216) passes --remote_cache
+# explicitly from BAZEL_REMOTE_CACHE after validating the strict attachment
+# contract.
+
+build:ci-cached --config=ci
+build:ci-cached --remote_upload_local_results=true
+build:ci-cached --remote_download_minimal
+build:ci-cached --remote_timeout=60
+
+build:executor-backed --config=ci-cached
+
+# ============================================================================
+# CI base config
+# ============================================================================
+build:ci --color=yes
+build:ci --show_progress_rate_limit=10
+build:ci --terminal_columns=140
+
+# ============================================================================
+# Local per-user override
+# ============================================================================
+try-import %workspace%/user.bazelrc

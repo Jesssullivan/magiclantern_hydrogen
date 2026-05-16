@@ -1,0 +1,18 @@
+# Root BUILD file for magiclantern_hydrogen.
+#
+# Firmware is built via the existing Make flow under platform/<PLATFORM>/.
+# Bazel orchestrates host-side tooling and tests. Subdirectories carry
+# their own BUILD.bazel files as they grow Bazel-native targets
+# (tools/raw-stack, tools/af-log, etc.).
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "AGENTS.md",
+    "CLAUDE.md",
+    "Justfile",
+    "flake.nix",
+    "MODULE.bazel",
+    ".bazelrc",
+    ".bazelversion",
+])

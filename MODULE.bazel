@@ -1,0 +1,47 @@
+"""magiclantern_hydrogen Bazel Module Configuration
+
+Bazel orchestrates host-side tooling (raw stacker, AF-log analyzer, tests,
+CI bundling) and integrates with the Flywheel attic cache substrate.
+
+Firmware itself is built via the existing GNU Make + arm-none-eabi-gcc
+flow under /platform/<PLATFORM>/. Bazel does not build firmware (yet);
+introducing rules_cc-based firmware builds with a hermetic ARM toolchain
+is a separate, deliberate workstream.
+
+Bzlmod is the primary Bazel module system for this repo.
+"""
+
+module(
+    name = "magiclantern-hydrogen",
+    version = "0.1.0",
+)
+
+# =============================================================================
+# Core Bazel Rules
+# =============================================================================
+
+bazel_dep(name = "bazel_skylib", version = "1.8.2")
+bazel_dep(name = "rules_pkg", version = "1.1.0")
+bazel_dep(name = "rules_python", version = "1.4.1")
+bazel_dep(name = "rules_shell", version = "0.6.0")
+bazel_dep(name = "platforms", version = "0.0.10")
+bazel_dep(name = "rules_cc", version = "0.2.18")
+
+# Allow rules_python hermetic interpreter to run as root in CI containers.
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.toolchain(
+    ignore_root_user_error = True,
+    python_version = "3.11",
+)
+
+# =============================================================================
+# Nix Toolchain Integration
+# =============================================================================
+# Pulls toolchains from the flake so Bazel uses the same versions as the
+# devshell and CI. Per the cross-constellation contract documented in
+# ../GloriousFlywheel/MODULE.bazel, language toolchains source from their
+# canonical BCR rules; rules_nixpkgs_core is reserved for Nix-imported
+# binary tools that don't have BCR equivalents (e.g. arm-none-eabi-gcc
+# for future firmware build, qemu, lua).
+
+bazel_dep(name = "rules_nixpkgs_core", version = "0.13.0")

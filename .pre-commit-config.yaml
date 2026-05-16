@@ -1,0 +1,36 @@
+# magiclantern_hydrogen — pre-commit hooks
+#
+# Hook entry points wrap `just` recipes so the local pre-commit run and
+# CI run the same code path. Run `pre-commit install` once after the
+# devshell loads.
+
+repos:
+  - repo: local
+    hooks:
+      - id: just-fmt-check
+        name: just fmt-check
+        entry: just fmt-check
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+      - id: just-lint
+        name: just lint
+        entry: just lint
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: '^(src/libs/|tcc/|minimal/qemu-|.*\.patch$|.*\.diff$)'
+      - id: end-of-file-fixer
+        exclude: '^(src/libs/|tcc/|minimal/qemu-)'
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: mixed-line-ending
+        args: [--fix=lf]
+        exclude: '^(src/libs/|tcc/)'

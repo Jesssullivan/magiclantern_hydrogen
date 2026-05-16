@@ -78,3 +78,43 @@ developer_guide/developer_guide.html
 developer_guide/developer_guide.pdf
 
 syntax: regexp
+
+# ───────────────────────────────────────────────────────────────────────────
+# Modern toolchain additions (Sprint A1 / TIN-1214)
+# ───────────────────────────────────────────────────────────────────────────
+
+# The upstream-style `.*` rule above silently ignores all dotfiles. Allow
+# the ones our toolchain needs tracked. Last-match-wins, so order matters:
+# these must follow the `.*` rule from the upstream header.
+!.envrc
+!.bazelrc
+!.bazelversion
+!.clang-format
+!.gitattributes
+!.pre-commit-config.yaml
+!.github
+!.github/**
+!.env.example
+
+# Bazel
+bazel-*
+# but keep our cache wrapper script (which uses the bazel- prefix by design)
+!scripts/bazel-*.sh
+user.bazelrc
+
+# Nix
+result
+result-*
+.direnv/
+
+# Zig
+zig-out/
+.zig-cache/
+
+# direnv local overrides
+.envrc.local
+.env
+!.env.example
+
+# huskycat working dirs (kept locally, not versioned)
+.huskycat/

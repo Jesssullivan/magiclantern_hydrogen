@@ -1,0 +1,26 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: ["config:recommended"],
+  nix: { enabled: true },
+  "bazel-module": { enabled: true },
+  packageRules: [
+    {
+      matchManagers: ["nix"],
+      groupName: "nix flake inputs",
+    },
+    {
+      matchManagers: ["bazel-module"],
+      groupName: "bazel dependencies",
+    },
+    {
+      matchManagers: ["github-actions"],
+      groupName: "github actions",
+    },
+  ],
+  // No automerge by default — solo project, manual review keeps the
+  // surface area visible. Flip on per-rule once we have green CI.
+  automerge: false,
+  // Magic Lantern releases on its own cadence; do not get noisy about
+  // upstream community release cycles. We are a non-upstreamable fork.
+  ignoreDeps: [],
+}
