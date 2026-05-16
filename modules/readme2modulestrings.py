@@ -173,10 +173,21 @@ if len(last_change_info):
     split = last_change_date.split(" ")
     seconds = float(split[0])
     last_change_date = datetime.utcfromtimestamp(seconds).strftime("%Y-%m-%d %H:%M:%S UTC")
-    
+
     # trim changeset to 7 chars, like Bitbucket does
     last_changeset = last_changeset[:7]
-    
+
+    # extent_func uses an embedded ASCII-only font (rbf_read.py /
+    # data/fonts/argnor23.rbf). Any char outside the font range raises
+    # IndexError. ASCII-fold the commit message and author so foreign
+    # punctuation in subjects (em-dashes, smart quotes) doesn't kill
+    # the build.
+    def _ascii_fold(s):
+        # ord >= font.charFirst (~32) and < ~127.
+        return "".join(c if 32 <= ord(c) < 127 else "?" for c in s)
+    commit_msg = _ascii_fold(commit_msg)
+    author = _ascii_fold(author)
+
     # trim commit msg to 700px
     size = extent_func(commit_msg)[0]
     if size > 700:
