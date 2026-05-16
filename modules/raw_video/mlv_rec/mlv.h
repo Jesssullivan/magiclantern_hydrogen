@@ -281,6 +281,103 @@ typedef struct {
 */
 }  mlv_vers_hdr_t;
 
+/* ------------------------------------------------------------------------ */
+/* magiclantern_hydrogen extensions (Sprint B2 / TIN-1222, Sprint C2 /      */
+/* TIN-1228). Per-frame calibration metadata (RAWX) and AF/lens telemetry   */
+/* events (AFLG). Versioned + availability bitmap so per-platform gaps      */
+/* (e.g. 5D3 has no PROP_LENS_DYNAMIC_DATA) are explicit.                   */
+/* ------------------------------------------------------------------------ */
+
+/* RAWX availability bitmap. Set bits for fields the platform populates;
+ * unset fields carry the SENTINEL_* values below. */
+#define MLV_RAWX_HAS_ANALOG_GAIN    (1u << 0)
+#define MLV_RAWX_HAS_DIGITAL_GAIN   (1u << 1)
+#define MLV_RAWX_HAS_COLUMN_OFFSET  (1u << 2)
+#define MLV_RAWX_HAS_DARK_TEMP      (1u << 3)
+#define MLV_RAWX_HAS_DPC_REF        (1u << 4)
+#define MLV_RAWX_HAS_FPN_REF        (1u << 5)
+#define MLV_RAWX_HAS_NS_TIMESTAMP   (1u << 6)
+
+#define MLV_RAWX_SENTINEL_U32       0xFFFFFFFFu
+#define MLV_RAWX_SENTINEL_U16       0xFFFFu
+#define MLV_RAWX_SENTINEL_I32       ((int32_t) 0x80000000)
+
+typedef struct {
+    uint8_t     blockType[4];       /* RAWX: per-frame calibration metadata */
+    uint32_t    blockSize;          /* sizeof(mlv_rawx_hdr_t) */
+    uint64_t    timestamp;          /* hardware tick at frame VSYNC */
+
+    uint16_t    version;            /* schema version; bump on field reorder */
+    uint16_t    reserved0;
+    uint32_t    fields_present;     /* MLV_RAWX_HAS_* bitmap */
+
+    /* gain stage */
+    uint32_t    analog_gain;        /* sensor analog gain (platform-encoded) */
+    uint32_t    digital_gain;       /* SHAD_GAIN_REGISTER on Digic V+; sentinel on Digic IV */
+
+    /* offsets and noise references */
+    int32_t     column_offset;      /* per-column DC offset bias if available */
+    int32_t     dark_temp;          /* sensor temperature (platform-encoded) */
+    uint32_t    dpc_table_ref;      /* opaque ref to DPC table snapshot */
+    uint32_t    fpn_table_ref;      /* opaque ref to FPN data snapshot */
+
+    /* timing */
+    uint64_t    exposure_ns;        /* exposure duration in nanoseconds */
+}  mlv_rawx_hdr_t;
+
+/* AFLG availability bitmap. */
+#define MLV_AFLG_HAS_DYNAMIC_LENS    (1u << 0)  /* DIGIC8+ PROP_LENS_DYNAMIC_DATA */
+#define MLV_AFLG_HAS_LV_FOCUS_DATA   (1u << 1)  /* PROP_LV_FOCUS_DATA magnitude */
+#define MLV_AFLG_HAS_AFMA            (1u << 2)  /* PROP_AFMA (5D3) */
+#define MLV_AFLG_HAS_AF_AREA         (1u << 3)  /* PROP_LV_AFFRAME */
+#define MLV_AFLG_HAS_IS_STATE        (1u << 4)
+#define MLV_AFLG_HAS_PHYSICAL_SWITCH (1u << 5)  /* physical AF/MF switch */
+
+/* AFLG event type. One block per discrete AF event. */
+typedef enum {
+    MLV_AFLG_EVT_HALF_PRESS      = 1,
+    MLV_AFLG_EVT_FOCUS_DONE      = 2,
+    MLV_AFLG_EVT_FOCUS_DATA      = 3,
+    MLV_AFLG_EVT_AF_POINT_CHANGE = 4,
+    MLV_AFLG_EVT_AF_AREA_CHANGE  = 5,
+    MLV_AFLG_EVT_APERTURE_CHANGE = 6,
+    MLV_AFLG_EVT_IS_STATE_CHANGE = 7,
+    MLV_AFLG_EVT_LENS_DYNAMIC    = 8,
+    MLV_AFLG_EVT_HSP_COUNTDOWN   = 9,
+} mlv_aflg_event_t;
+
+typedef struct {
+    uint8_t     blockType[4];       /* AFLG: AF/lens telemetry event */
+    uint32_t    blockSize;          /* sizeof(mlv_aflg_hdr_t) */
+    uint64_t    timestamp;          /* hardware tick at event */
+
+    uint16_t    version;            /* schema version */
+    uint16_t    event_type;         /* mlv_aflg_event_t */
+    uint32_t    fields_present;     /* MLV_AFLG_HAS_* bitmap */
+
+    /* AF state */
+    uint16_t    af_point;
+    uint16_t    af_area_mode;
+    uint16_t    focus_magnitude;    /* from PROP_LV_FOCUS_DATA buf[2..4] */
+    uint16_t    af_result;          /* PROP_LV_FOCUS_DONE buf[0] */
+    uint8_t     hsp_countdown;      /* half-shutter countdown (focus.c:880) */
+    uint8_t     af_mf_physical;     /* physical AF/MF switch (DIGIC8+) */
+    uint8_t     is_state;
+    uint8_t     reserved1;
+
+    /* lens dynamic data (DIGIC8+ only; sentinels otherwise) */
+    uint16_t    focus_near;
+    uint16_t    focus_far;
+    uint16_t    focus_pos;
+    uint16_t    focal_length;
+
+    /* aperture and AFMA */
+    uint32_t    aperture_raw;
+    int32_t     afma_offset;        /* PROP_AFMA value or sentinel */
+}  mlv_aflg_hdr_t;
+
+/* ------------------------------------------------------------------------ */
+
 #pragma pack(pop)
 
 /* helper routines for filling structures from generic camera information */

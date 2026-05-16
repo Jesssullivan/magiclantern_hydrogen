@@ -54,6 +54,8 @@ ML_MODULES = \
     dev_tools/edmac \
     sd_uhs \
     raw_video/raw_vidx \
+    raw_spectral \
+    af_logger \
     yolo
 
 .PHONY: clean $(BUILD_DIR)
