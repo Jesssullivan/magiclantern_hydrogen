@@ -1,5 +1,5 @@
-raw_spectral
-============
+rawspect
+========
 
 :Author: magiclantern_hydrogen
 :License: GPL
