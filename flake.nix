@@ -71,7 +71,10 @@
       firmwareTools = [
         armEmbedded
         pkgs.gnumake
-        pkgs.python3
+        # Python with docutils — modules/readme2modulestrings.py
+        # invokes `rst2html` from docutils to render README.rst into
+        # module string tables.
+        (pkgs.python3.withPackages (ps: [ps.docutils]))
         pkgs.lua5_1
         pkgs.gcc # host build of build_tools/
       ];
