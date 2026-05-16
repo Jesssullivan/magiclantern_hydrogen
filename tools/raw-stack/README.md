@@ -20,6 +20,26 @@ zig build
 
 Or run the tests directly: `zig build test`.
 
+### macOS local-build caveat
+
+On macOS with the MacOSX 26.5 SDK (and likely later), `zig build` fails
+with linker errors for libc symbols (`_fork`, `_free`, `_getcwd`, etc.).
+Both `nixpkgs#zig` (0.15.2) and `nixpkgs#zig_0_14` (0.14.1) exhibit this;
+the root cause is in the nixpkgs Darwin SDK plumbing and is independent
+of our code. The Zig sources here are syntactically valid for 0.14 and
+0.15 (verified by `zig` accepting the `build.zig` definition); the
+issue surfaces only at the link step.
+
+Workarounds while this is open:
+
+- **Linux CI**: builds cleanly on `ubuntu-latest` GitHub Actions
+  (planned wire-up in `.github/workflows/ci.yml`).
+- **macOS local**: use the system Xcode toolchain directly
+  (`xcrun --sdk macosx clang …`) bypassing nix's wrapper, OR install a
+  Zig binary directly from `ziglang.org` outside the flake.
+- **Track**: future TIN to record the fix path (likely a flake input
+  for `darwin.apple_sdk` or a `libc.txt` override for Zig).
+
 ## Subcommands (planned)
 
 | Subcommand | Status | Purpose |

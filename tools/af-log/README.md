@@ -20,6 +20,12 @@ zig build
 
 Or `zig build test`.
 
+### macOS local-build caveat
+
+See the matching note in `tools/raw-stack/README.md`. The nixpkgs-Darwin
++ Zig + MacOSX 26.5 SDK combination produces libc linker errors at
+build time. Use Linux CI or a non-nix Zig install while this is open.
+
 ## Subcommands
 
 | Subcommand | Status | Purpose |
