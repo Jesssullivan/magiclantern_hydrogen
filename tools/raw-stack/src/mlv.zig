@@ -66,6 +66,23 @@ pub const Rawx = struct {
 };
 
 /// AFLG block payload (mlv_aflg_hdr_t).
+/// VIDF block header (per `mlv_vidf_hdr_t` in mlv_rec/mlv.h). VIDF
+/// carries raw frame payload after the header + an optional frame-space
+/// padding region used to align the pixel data. We decode the header
+/// fields useful for inventory/inspection; the pixel data itself is
+/// not unpacked here (platform-specific bit packing — future work).
+pub const Vidf = struct {
+    frame_number: u32,
+    cropPos_x: u16,
+    cropPos_y: u16,
+    panPos_x: u16,
+    panPos_y: u16,
+    frameSpace: u32,
+
+    /// On-disk payload size after the 16-byte block header.
+    pub const PAYLOAD_SIZE: usize = 4 + 2 + 2 + 2 + 2 + 4;
+};
+
 pub const Aflg = struct {
     version: u16,
     event_type: u16,
@@ -203,6 +220,34 @@ pub const Reader = struct {
             .dpc_table_ref = std.mem.readInt(u32, buf[24..28], .little),
             .fpn_table_ref = std.mem.readInt(u32, buf[28..32], .little),
             .exposure_ns = std.mem.readInt(u64, buf[32..40], .little),
+        };
+    }
+
+    pub fn readVidf(self: *Reader, hdr: BlockHeader) !Vidf {
+        const remaining = @as(usize, hdr.block_size) -| BLOCK_HEADER_SIZE;
+        if (remaining < Vidf.PAYLOAD_SIZE) return error.TruncatedVidf;
+
+        var buf: [Vidf.PAYLOAD_SIZE]u8 = undefined;
+        const n = try self.underlying.readAll(&buf);
+        if (n < Vidf.PAYLOAD_SIZE) return error.UnexpectedEof;
+
+        // Skip everything past the header (frameSpace padding + raw payload).
+        var skipped: usize = Vidf.PAYLOAD_SIZE;
+        var sink: [4096]u8 = undefined;
+        while (skipped < remaining) {
+            const want = @min(sink.len, remaining - skipped);
+            const got = try self.underlying.readAll(sink[0..want]);
+            if (got == 0) return error.UnexpectedEof;
+            skipped += got;
+        }
+
+        return .{
+            .frame_number = std.mem.readInt(u32, buf[0..4], .little),
+            .cropPos_x = std.mem.readInt(u16, buf[4..6], .little),
+            .cropPos_y = std.mem.readInt(u16, buf[6..8], .little),
+            .panPos_x = std.mem.readInt(u16, buf[8..10], .little),
+            .panPos_y = std.mem.readInt(u16, buf[10..12], .little),
+            .frameSpace = std.mem.readInt(u32, buf[12..16], .little),
         };
     }
 

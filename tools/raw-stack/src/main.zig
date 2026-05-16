@@ -28,6 +28,7 @@ const Subcommand = enum {
     demosaic_skip,
     calibrate,
     fixture,
+    frames,
 };
 
 fn parseSubcommand(arg: []const u8) ?Subcommand {
@@ -43,6 +44,7 @@ fn parseSubcommand(arg: []const u8) ?Subcommand {
         .{ "demosaic-skip", .demosaic_skip },
         .{ "calibrate", .calibrate },
         .{ "fixture", .fixture },
+        .{ "frames", .frames },
     };
     inline for (map) |entry| {
         if (std.mem.eql(u8, arg, entry[0])) return entry[1];
@@ -114,7 +116,48 @@ pub fn main() !u8 {
             return 1;
         },
         .fixture => return try runFixture(args[2..]),
+        .frames => return try runFrames(allocator, args[2..]),
     }
+}
+
+fn runFrames(allocator: std.mem.Allocator, args: [][:0]u8) !u8 {
+    const stderr = std.io.getStdErr().writer();
+    if (args.len != 1) {
+        try stderr.print("raw-stack frames: expected 1 argument (path to MLV file)\n", .{});
+        return 2;
+    }
+
+    var file = std.fs.cwd().openFile(args[0], .{}) catch |err| {
+        try stderr.print("raw-stack frames: cannot open '{s}': {s}\n", .{ args[0], @errorName(err) });
+        return 1;
+    };
+    defer file.close();
+
+    var reader = mlv.Reader.init(allocator, file.reader().any());
+    defer reader.deinit();
+
+    const stdout = std.io.getStdOut().writer();
+    try stdout.print(
+        "{s:<8} {s:<16} {s:<10} {s:<8} {s:<8} {s:<8} {s:<8} {s:<10}\n",
+        .{ "n", "ts", "size", "crop_x", "crop_y", "pan_x", "pan_y", "fSpace" },
+    );
+    try stdout.print("{s}\n", .{"-" ** 80});
+
+    var count: u64 = 0;
+    while (try reader.next()) |hdr| {
+        if (mlv.blockTypeEquals(hdr.block_type, "VIDF")) {
+            const v = try reader.readVidf(hdr);
+            try stdout.print(
+                "{d:<8} {d:<16} {d:<10} {d:<8} {d:<8} {d:<8} {d:<8} {d:<10}\n",
+                .{ v.frame_number, hdr.timestamp, hdr.block_size, v.cropPos_x, v.cropPos_y, v.panPos_x, v.panPos_y, v.frameSpace },
+            );
+            count += 1;
+        } else {
+            try reader.skipBlockBody(hdr);
+        }
+    }
+    try stdout.print("\n{d} VIDF blocks total\n", .{count});
+    return 0;
 }
 
 fn runStack(allocator: std.mem.Allocator, args: [][:0]u8) !u8 {

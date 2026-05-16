@@ -14,6 +14,9 @@ const mlv = @import("mlv.zig");
 pub const Options = struct {
     rawx_frames: u32 = 4,
     aflg_events: u32 = 6,
+    /// Number of VIDF blocks to emit (with zero-byte raw payload —
+    /// header-only). 0 disables VIDF emission.
+    vidf_frames: u32 = 4,
     /// Start hardware tick; subsequent blocks advance by `tick_step`.
     tick_start: u64 = 1_000_000,
     tick_step: u64 = 33_000, // ~30 Hz vsync at us granularity
@@ -25,6 +28,20 @@ pub const Options = struct {
 
 pub fn writeFixture(writer: anytype, opts: Options) !void {
     var tick = opts.tick_start;
+
+    var v: u32 = 0;
+    while (v < opts.vidf_frames) : (v += 1) {
+        try writeVidf(writer, .{
+            .timestamp = tick,
+            .frame_number = v,
+            .cropPos_x = 0,
+            .cropPos_y = 0,
+            .panPos_x = 0,
+            .panPos_y = 0,
+            .frameSpace = 0,
+        });
+        tick += opts.tick_step;
+    }
 
     var i: u32 = 0;
     while (i < opts.rawx_frames) : (i += 1) {
@@ -130,6 +147,30 @@ pub const RawxArgs = struct {
     fpn_table_ref: u32,
     exposure_ns: u64,
 };
+
+pub const VidfArgs = struct {
+    timestamp: u64,
+    frame_number: u32,
+    cropPos_x: u16,
+    cropPos_y: u16,
+    panPos_x: u16,
+    panPos_y: u16,
+    frameSpace: u32,
+};
+
+fn writeVidf(writer: anytype, args: VidfArgs) !void {
+    const total: u32 = @intCast(mlv.BLOCK_HEADER_SIZE + mlv.Vidf.PAYLOAD_SIZE);
+    try writer.writeAll("VIDF");
+    try writer.writeInt(u32, total, .little);
+    try writer.writeInt(u64, args.timestamp, .little);
+
+    try writer.writeInt(u32, args.frame_number, .little);
+    try writer.writeInt(u16, args.cropPos_x, .little);
+    try writer.writeInt(u16, args.cropPos_y, .little);
+    try writer.writeInt(u16, args.panPos_x, .little);
+    try writer.writeInt(u16, args.panPos_y, .little);
+    try writer.writeInt(u32, args.frameSpace, .little);
+}
 
 fn writeRawx(writer: anytype, args: RawxArgs) !void {
     // Block header (BLOCK_HEADER_SIZE) + payload (Rawx.PAYLOAD_SIZE).

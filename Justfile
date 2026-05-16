@@ -129,17 +129,77 @@ clean:
 
 # ── QEMU ───────────────────────────────────────────────────────────────────
 
+# Bootstrap the sibling qemu-eos repo (Magic Lantern's patched QEMU
+# fork). Clones to ../qemu-eos if absent. Building qemu-eos and
+# providing ROM dumps is operator responsibility — qemu-eos requires
+# per-camera ROM dumps which cannot be checked into a public repo.
+bootstrap-qemu-eos:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    sib="$(cd .. && pwd)/qemu-eos"
+    if [ -d "$sib/.git" ]; then
+      echo "qemu-eos already at $sib"
+      exit 0
+    fi
+    echo "Cloning reticulatedpines/qemu-eos to $sib ..."
+    git clone https://github.com/reticulatedpines/qemu-eos "$sib"
+    echo
+    echo "Next steps (operator):"
+    echo "  1. cd $sib && ./configure ..."
+    echo "  2. Populate ROM dumps under \$sib/ML/CAM/<PLATFORM>/{ROM0.BIN,ROM1.BIN}"
+    echo "  3. From this repo: just qemu-test 5D3"
+
 # Boot the named platform in qemu-eos and run boot-smoke.
-#   Requires ../qemu-eos checked out and built (sibling repo).
-#   Stub until A4 wires the qemu-eos build path. See Linear TIN-1217.
+# Linear TIN-1217. Requires ../qemu-eos cloned + built + ROMs in place.
+# This recipe gracefully degrades:
+#   - missing ../qemu-eos -> instruct bootstrap
+#   - present but missing run_canon_fw.sh -> instruct build
+#   - present + built but no ROMs -> instruct ROM placement
+#   - all present -> run boot smoke, capture stdout, exit success on
+#     "ML loaded" sentinel (TODO: tighter assertion).
 qemu-test PLATFORM:
-    @echo "qemu-test {{PLATFORM}}: not yet wired. See TIN-1217 (Sprint A4)."
-    @exit 1
+    #!/usr/bin/env bash
+    set -euo pipefail
+    sib="$(cd .. && pwd)/qemu-eos"
+    if [ ! -d "$sib" ]; then
+      echo "qemu-eos not found at $sib"
+      echo "Run: just bootstrap-qemu-eos"
+      exit 2
+    fi
+    runner="$sib/run_canon_fw.sh"
+    if [ ! -x "$runner" ]; then
+      echo "qemu-eos at $sib is not built (no $runner)"
+      echo "See $sib/README and build per upstream instructions."
+      exit 2
+    fi
+    rom_dir="$sib/ML/CAM/{{PLATFORM}}"
+    if [ ! -f "$rom_dir/ROM0.BIN" ] && [ ! -f "$rom_dir/ROM1.BIN" ]; then
+      echo "No ROM dumps at $rom_dir"
+      echo "Provide ROM0.BIN / ROM1.BIN for {{PLATFORM}} (operator-supplied)."
+      exit 2
+    fi
+    echo "Booting {{PLATFORM}} in qemu-eos ..."
+    timeout 30 "$runner" {{PLATFORM}} -d debugmsg 2>&1 | tee /tmp/qemu-test-{{PLATFORM}}.log
+    if grep -q "ML loaded\|Magic Lantern" /tmp/qemu-test-{{PLATFORM}}.log; then
+      echo "qemu-test {{PLATFORM}}: OK (ML boot signature observed)"
+      exit 0
+    fi
+    echo "qemu-test {{PLATFORM}}: ML boot signature not observed; check log"
+    exit 1
 
 # Run qemu-test against every in-scope platform.
 qemu-matrix:
-    @echo "qemu-matrix: not yet wired. See TIN-1217 (Sprint A4)."
-    @exit 1
+    #!/usr/bin/env bash
+    set -euo pipefail
+    fail=0
+    for p in 5D2 5D3 5D4; do
+      echo "── qemu-test $p ──"
+      just qemu-test "$p" || fail=$((fail+1))
+    done
+    if [ "$fail" -ne 0 ]; then
+      echo "qemu-matrix: $fail platform(s) failed"
+      exit 1
+    fi
 
 # ── Host-side tests ────────────────────────────────────────────────────────
 
