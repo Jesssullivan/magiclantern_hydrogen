@@ -1,25 +1,13 @@
 /*
- * raw_spectral — per-frame calibration metadata snapshot
+ * raw_spectral — per-frame calibration metadata (RAWX block emitter)
  *
  * Sprint B2 / TIN-1222.
  *
- * Hooks CBR_VSYNC (called for every LiveView frame) and
- * CBR_RAW_INFO_UPDATE to snapshot calibration-grade state into a
- * thread-safe buffer that downstream consumers (the host pipeline via
- * a sidecar MLV file, or a future raw_vidx integration) can read.
- *
- * This first slice:
- *   - registers the CBR handlers
- *   - reads `lv_raw_gain` proxy via SHAD_GAIN_REGISTER on Digic V+
- *   - emits an occasional console message so the module's liveness is
- *     visible in qemu-eos boot smoke tests
- *
- * Next slice (Linear TIN-1222):
- *   - per-platform CMOS / ADTG register surfacing (5D3.123 first)
- *   - sidecar MLV writer (parallel to mlv_snd) that emits RAWX blocks
- *     with the snapshot
- *   - exported function get_latest_rawx_snapshot() for opt-in
- *     consumers (raw_vidx, tools, future Zig modules)
+ * Snapshots calibration-grade per-vsync state via CBR_VSYNC, then
+ * emits a RAWX MLV block paired with each VIDF (per-video-frame) via
+ * mlv_rec's public cooperator API (mlv_rec_register_cbr +
+ * mlv_rec_queue_block). RAWX and VIDF blocks land in the same MLV
+ * file at the same hardware ticks.
  *
  * Audited hook points: developer_guide/09_00_raw_sensor_stack.md.
  * Block definition: modules/raw_video/mlv_rec/mlv.h (mlv_rawx_hdr_t).
@@ -31,43 +19,45 @@
 #include <property.h>
 
 #include "mlv.h"
+#include "mlv_rec_interface.h"
 
-/* SHAD_GAIN_REGISTER is defined in src/raw.c as a static constant.
- * Mirror it here rather than expose ML core internals. On Digic IV
- * (5D2.212) this register is meaningless; we gate reads behind a
- * runtime feature check (digital gain field stays at sentinel). */
+/* SHAD_GAIN_REGISTER (src/raw.c:187). Digic V+ only; on 5D2 (Digic IV)
+ * shamem_read returns garbage and we leave the digital_gain bit unset
+ * in fields_present so the host stacker knows to ignore it. */
 #define RAWX_SHAD_GAIN_REGISTER 0xC0F08030u
 
-/* Latest snapshot. Single-writer (CBR_VSYNC), multi-reader (future
- * consumers). Read with a memory barrier; write atomically. The struct
- * matches mlv_rawx_hdr_t fields so a writer can copy directly. */
-static struct
-{
+extern uint32_t shamem_read(uint32_t addr);
+
+/* Latest per-vsync snapshot. Single-writer (CBR_VSYNC), multi-reader
+ * (MLV_REC_EVENT_VIDF). */
+static volatile struct {
     uint32_t fields_present;
     uint32_t analog_gain;
     uint32_t digital_gain;
     int32_t  column_offset;
     int32_t  dark_temp;
-    uint64_t last_vsync_tick;
+    uint64_t last_vsync_us;
     uint32_t vsync_count;
 } g_snapshot = {0};
 
-/* Pull from MMIO. shamem_read is the ML core helper that reads via the
- * shadow memory cache (consistent on all platforms; does not stall). */
-extern uint32_t shamem_read(uint32_t addr);
+static volatile int g_recording = 0;
 
 static unsigned int raw_spectral_vsync_cbr(unsigned int ctx)
 {
     (void) ctx;
 
     g_snapshot.vsync_count++;
-    g_snapshot.last_vsync_tick = get_us_clock();
+    g_snapshot.last_vsync_us = get_us_clock();
 
-    /* Digital gain via SHAD_GAIN_REGISTER (Digic V+ only). On older
-     * platforms shamem_read returns garbage; we trust the per-platform
-     * build to wire the right value or to keep the bit unset. */
+    /* SHAD_GAIN_REGISTER on Digic V+. On 5D2 this read returns
+     * nondeterministic data; the host stacker keys off the
+     * HAS_DIGITAL_GAIN bit to decide whether to trust the value. */
     g_snapshot.digital_gain = shamem_read(RAWX_SHAD_GAIN_REGISTER);
     g_snapshot.fields_present |= MLV_RAWX_HAS_DIGITAL_GAIN;
+
+    /* TODO(TIN-1222): per-platform CMOS / ADTG register surfacing.
+     * 5D3.123 first — its cmos_iso_t / adtg_iso_t tables are the most
+     * exercised by existing modules. */
 
     return CBR_RET_CONTINUE;
 }
@@ -75,25 +65,72 @@ static unsigned int raw_spectral_vsync_cbr(unsigned int ctx)
 static unsigned int raw_spectral_raw_info_cbr(unsigned int ctx)
 {
     (void) ctx;
-
-    /* CBR_RAW_INFO_UPDATE fires when ML core has updated raw_info.
-     * The black/white levels and bayer pattern are available here.
-     * Next slice will copy them into a separate file-header block. */
+    /* CBR_RAW_INFO_UPDATE fires when raw_info changes. Next slice
+     * will copy black/white levels into a separate static metadata
+     * block emitted once at recording start. */
     return CBR_RET_CONTINUE;
+}
+
+/* Called per VIDF by mlv_rec (MLV_REC_EVENT_VIDF). Allocates a RAWX
+ * block, copies the latest snapshot, and queues it for writing. The
+ * block is freed by mlv_rec after the write completes. */
+static void raw_spectral_vidf_cbr(uint32_t event, void *ctx, mlv_hdr_t *vidf_hdr)
+{
+    (void) event; (void) ctx; (void) vidf_hdr;
+    if (!g_recording) return;
+
+    mlv_rawx_hdr_t *hdr = malloc(sizeof(mlv_rawx_hdr_t));
+    if (!hdr) return;
+
+    mlv_set_type((mlv_hdr_t *) hdr, "RAWX");
+    hdr->blockSize      = sizeof(mlv_rawx_hdr_t);
+    hdr->version        = 1;
+    hdr->reserved0      = 0;
+    hdr->fields_present = g_snapshot.fields_present;
+    hdr->analog_gain    = MLV_RAWX_SENTINEL_U32;
+    hdr->digital_gain   = g_snapshot.digital_gain;
+    hdr->column_offset  = MLV_RAWX_SENTINEL_I32;
+    hdr->dark_temp      = MLV_RAWX_SENTINEL_I32;
+    hdr->dpc_table_ref  = MLV_RAWX_SENTINEL_U32;
+    hdr->fpn_table_ref  = MLV_RAWX_SENTINEL_U32;
+    hdr->exposure_ns    = 0;
+
+    mlv_rec_queue_block((mlv_hdr_t *) hdr);
+}
+
+static void raw_spectral_starting(uint32_t event, void *ctx, mlv_hdr_t *hdr)
+{
+    (void) event; (void) ctx; (void) hdr;
+    g_recording = 1;
+    console_printf("raw_spectral: RAWX emission ON (recording started).\n");
+}
+
+static void raw_spectral_stopped(uint32_t event, void *ctx, mlv_hdr_t *hdr)
+{
+    (void) event; (void) ctx; (void) hdr;
+    g_recording = 0;
+    console_printf("raw_spectral: RAWX emission OFF. %u vsync ticks observed.\n",
+                   g_snapshot.vsync_count);
 }
 
 static unsigned int raw_spectral_init(void)
 {
+    g_recording = 0;
     g_snapshot.fields_present = 0;
     g_snapshot.vsync_count = 0;
-    console_printf("raw_spectral: init (scaffold). CBR_VSYNC + CBR_RAW_INFO_UPDATE registered.\n");
+    mlv_rec_register_cbr(MLV_REC_EVENT_STARTING, &raw_spectral_starting,  NULL);
+    mlv_rec_register_cbr(MLV_REC_EVENT_STOPPED,  &raw_spectral_stopped,   NULL);
+    mlv_rec_register_cbr(MLV_REC_EVENT_VIDF,     &raw_spectral_vidf_cbr,  NULL);
+    console_printf("raw_spectral: init. CBR_VSYNC + mlv_rec CBRs registered.\n");
     return 0;
 }
 
 static unsigned int raw_spectral_deinit(void)
 {
-    console_printf("raw_spectral: deinit. observed %u vsync ticks.\n",
-                   g_snapshot.vsync_count);
+    g_recording = 0;
+    mlv_rec_unregister_cbr(&raw_spectral_starting);
+    mlv_rec_unregister_cbr(&raw_spectral_stopped);
+    mlv_rec_unregister_cbr(&raw_spectral_vidf_cbr);
     return 0;
 }
 
@@ -103,13 +140,13 @@ MODULE_INFO_START()
 MODULE_INFO_END()
 
 MODULE_CBRS_START()
-    MODULE_CBR(CBR_VSYNC,            raw_spectral_vsync_cbr,    0)
-    MODULE_CBR(CBR_RAW_INFO_UPDATE,  raw_spectral_raw_info_cbr, 0)
+    MODULE_CBR(CBR_VSYNC,           raw_spectral_vsync_cbr,    0)
+    MODULE_CBR(CBR_RAW_INFO_UPDATE, raw_spectral_raw_info_cbr, 0)
 MODULE_CBRS_END()
 
 MODULE_STRINGS_START()
     MODULE_STRING("Description", "Per-frame calibration metadata (RAWX block emitter)")
     MODULE_STRING("Author", "magiclantern_hydrogen")
     MODULE_STRING("License", "GPL")
-    MODULE_STRING("Status", "scaffold - see Linear TIN-1222")
+    MODULE_STRING("Status", "Sprint B2 first-cut, see Linear TIN-1222")
 MODULE_STRINGS_END()
