@@ -202,8 +202,10 @@ push:
     ts=$(date -u +%Y-%m-%dT%H%M%SZ)
     branch="push/$ts"
     echo "Pushing $new_sha via local branch $branch ..."
-    git branch "$branch" "$new_sha"
-    trap "git branch -D $branch >/dev/null 2>&1 || true" EXIT
+    # checkout -b (not git branch) -- the ruleset requires HEAD to be on
+    # the new ref, not just for it to exist locally.
+    git checkout -b "$branch"
+    trap "git checkout dev >/dev/null 2>&1; git branch -D $branch >/dev/null 2>&1 || true" EXIT
     git push --force origin "$branch"
     gh api -X PATCH "/repos/Jesssullivan/magiclantern_hydrogen/git/refs/heads/dev" \
       -f "sha=$new_sha" -F "force=true" >/dev/null

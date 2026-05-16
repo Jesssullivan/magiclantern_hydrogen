@@ -15,6 +15,7 @@
 
 const std = @import("std");
 const mlv = @import("mlv.zig");
+const fixture = @import("fixture.zig");
 
 const VERSION = "0.1.0";
 
@@ -25,6 +26,7 @@ const Subcommand = enum {
     stack,
     demosaic_skip,
     calibrate,
+    fixture,
 };
 
 fn parseSubcommand(arg: []const u8) ?Subcommand {
@@ -39,6 +41,7 @@ fn parseSubcommand(arg: []const u8) ?Subcommand {
         .{ "stack", .stack },
         .{ "demosaic-skip", .demosaic_skip },
         .{ "calibrate", .calibrate },
+        .{ "fixture", .fixture },
     };
     inline for (map) |entry| {
         if (std.mem.eql(u8, arg, entry[0])) return entry[1];
@@ -53,10 +56,11 @@ fn printUsage(w: anytype) !void {
         \\Usage: raw-stack <subcommand> [args...]
         \\
         \\Subcommands:
-        \\  inspect FILE.mlv            Dump block taxonomy and RAWX summary
+        \\  inspect FILE.mlv            Dump block taxonomy and RAWX/AFLG summary
         \\  stack [OPTS] FILE...        Multi-frame stack with sensor-aware noise model (stub)
         \\  demosaic-skip FILE          Spectral mode → FITS (stub)
         \\  calibrate KIND DIR          Build dark/flat/bias frames (stub)
+        \\  fixture OUT.mlv             Write a synthetic RAWX+AFLG fixture (for tests)
         \\
         \\Global flags:
         \\  --help, -h                  This message
@@ -112,7 +116,24 @@ pub fn main() !u8 {
             try stderr.print("raw-stack calibrate: not yet implemented (TIN-1223).\n", .{});
             return 1;
         },
+        .fixture => return try runFixture(args[2..]),
     }
+}
+
+fn runFixture(args: [][:0]u8) !u8 {
+    const stderr = std.io.getStdErr().writer();
+    if (args.len != 1) {
+        try stderr.print("raw-stack fixture: expected 1 argument (output path)\n", .{});
+        return 2;
+    }
+    var file = std.fs.cwd().createFile(args[0], .{ .truncate = true }) catch |err| {
+        try stderr.print("raw-stack fixture: cannot create '{s}': {s}\n", .{ args[0], @errorName(err) });
+        return 1;
+    };
+    defer file.close();
+    try fixture.writeFixture(file.writer(), .{});
+    try std.io.getStdOut().writer().print("raw-stack fixture: wrote synthetic MLV to '{s}'\n", .{args[0]});
+    return 0;
 }
 
 fn runInspect(allocator: std.mem.Allocator, args: [][:0]u8) !u8 {
