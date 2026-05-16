@@ -39,8 +39,17 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release-artifacts
+          # Per-platform rename so artifacts from each model don't collide
+          # in the flat release-artifacts/ directory. v0.1.0 shipped only
+          # one autoexec.bin because the unconditional cp overwrote each
+          # platform's output with the next; renaming on copy preserves all.
           for p in 5D2.212 5D3.113 5D3.123 5D4.133; do
-            find "platform/$p" -maxdepth 4 \( -name '*.fir' -o -name 'autoexec.bin' -o -name 'ML*.fir' \) -print -exec cp {} "release-artifacts/" \; || true
+            while IFS= read -r -d '' src; do
+              base=$(basename "$src")
+              ext="${base##*.}"
+              stem="${base%.*}"
+              cp "$src" "release-artifacts/${stem}-${p}.${ext}"
+            done < <(find "platform/$p" -maxdepth 4 \( -name '*.fir' -o -name 'autoexec.bin' -o -name 'ML*.fir' \) -print0 2>/dev/null)
           done
           ls -la release-artifacts/
 
