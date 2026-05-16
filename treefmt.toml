@@ -1,0 +1,47 @@
+# treefmt config for magiclantern_hydrogen.
+#
+# Used by the standalone `treefmt` CLI (e.g. `just fmt`, `just fmt-check`).
+# The flake.nix also wires treefmt-nix with the same patterns for
+# `nix fmt` and `nix flake check` integration.
+#
+# Mirrors doc/CODING_STYLE for C/H (Allman, 4-space, 80-col via
+# .clang-format).
+
+[formatter.clang-format]
+command = "clang-format"
+options = ["-i"]
+includes = ["*.c", "*.h", "*.cpp", "*.hpp"]
+excludes = [
+    "src/libs/**",
+    "tcc/**",
+    "minimal/qemu-*/**",
+]
+
+[formatter.zig]
+command = "zig"
+options = ["fmt"]
+includes = ["*.zig"]
+
+[formatter.prettier]
+command = "prettier"
+options = ["--write"]
+includes = ["*.md", "*.json", "*.json5", "*.yaml", "*.yml"]
+excludes = [
+    "developer_guide/*.html",
+    "doc/*.tex",
+    "flake.lock",
+]
+
+[formatter.alejandra]
+command = "alejandra"
+includes = ["*.nix"]
+
+[formatter.taplo]
+command = "taplo"
+options = ["format"]
+includes = ["*.toml"]
+
+[formatter.shfmt]
+command = "shfmt"
+options = ["-i", "2", "-w"]
+includes = ["*.sh"]

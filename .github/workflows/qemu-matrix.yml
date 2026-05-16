@@ -38,4 +38,4 @@ jobs:
             extra-substituters = ${{ vars.ATTIC_SERVER || 'https://nix-cache.tinyland.dev' }}/${{ vars.ATTIC_CACHE || 'main' }}
             extra-trusted-public-keys = ${{ secrets.ATTIC_PUBLIC_KEY }}
       - name: qemu-test ${{ matrix.platform }}
-        run: nix develop --command just qemu-test PLATFORM=${{ matrix.platform }}
+        run: nix develop --command just qemu-test ${{ matrix.platform }}
