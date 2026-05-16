@@ -67,5 +67,19 @@ if ! echo "$SUMMARY_OUT" | grep -q "6 AFLG blocks total"; then
   exit 1
 fi
 
+COMPLEX="$WORKDIR/complex.mlv"
+echo "==> Generating complex fixture at $COMPLEX"
+"$RAW_STACK" fixture "$COMPLEX" complex
+
+echo "==> af-log detect on complex fixture:"
+DETECT_OUT="$("$AF_LOG" detect "$COMPLEX")"
+echo "$DETECT_OUT"
+for pattern in focus_bracket tracking_dwell hunting; do
+  if ! echo "$DETECT_OUT" | grep -q "^$pattern "; then
+    echo "FAIL: expected af-log detect to find '$pattern' in complex fixture" >&2
+    exit 1
+  fi
+done
+
 echo
-echo "OK: round-trip fixture -> raw-stack inspect -> af-log replay/summary"
+echo "OK: round-trip fixture -> raw-stack inspect -> af-log replay/summary/detect"

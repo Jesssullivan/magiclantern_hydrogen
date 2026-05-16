@@ -122,17 +122,30 @@ pub fn main() !u8 {
 
 fn runFixture(args: [][:0]u8) !u8 {
     const stderr = std.io.getStdErr().writer();
-    if (args.len != 1) {
-        try stderr.print("raw-stack fixture: expected 1 argument (output path)\n", .{});
+    if (args.len < 1 or args.len > 2) {
+        try stderr.print("raw-stack fixture: expected OUT [complex|simple]\n", .{});
         return 2;
     }
+    var complex = false;
+    if (args.len == 2) {
+        if (std.mem.eql(u8, args[1], "complex")) complex = true
+        else if (std.mem.eql(u8, args[1], "simple")) complex = false
+        else {
+            try stderr.print("raw-stack fixture: 2nd arg must be 'complex' or 'simple'\n", .{});
+            return 2;
+        }
+    }
+
     var file = std.fs.cwd().createFile(args[0], .{ .truncate = true }) catch |err| {
         try stderr.print("raw-stack fixture: cannot create '{s}': {s}\n", .{ args[0], @errorName(err) });
         return 1;
     };
     defer file.close();
-    try fixture.writeFixture(file.writer(), .{});
-    try std.io.getStdOut().writer().print("raw-stack fixture: wrote synthetic MLV to '{s}'\n", .{args[0]});
+    try fixture.writeFixture(file.writer(), .{ .include_complex_patterns = complex });
+    try std.io.getStdOut().writer().print(
+        "raw-stack fixture: wrote {s} MLV to '{s}'\n",
+        .{ if (complex) "complex" else "simple", args[0] },
+    );
     return 0;
 }
 

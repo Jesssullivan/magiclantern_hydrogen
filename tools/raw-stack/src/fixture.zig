@@ -17,6 +17,10 @@ pub const Options = struct {
     /// Start hardware tick; subsequent blocks advance by `tick_step`.
     tick_start: u64 = 1_000_000,
     tick_step: u64 = 33_000, // ~30 Hz vsync at us granularity
+    /// When true, append a "complex" suffix that exercises all three
+    /// af-log detect classifiers (focus_bracket / tracking_dwell /
+    /// hunting). Used by the integration test.
+    include_complex_patterns: bool = false,
 };
 
 pub fn writeFixture(writer: anytype, opts: Options) !void {
@@ -61,6 +65,58 @@ pub fn writeFixture(writer: anytype, opts: Options) !void {
         });
         tick += opts.tick_step;
     }
+
+    if (opts.include_complex_patterns) {
+        try writeComplexAflgSuffix(writer, &tick, opts.tick_step);
+    }
+}
+
+/// Append AFLG events exercising all three detect classifiers:
+///   1. Focus-bracket: 5× FOCUS_DATA within ~165 ms.
+///   2. Tracking-dwell: AF_POINT_CHANGE then FOCUS_DONE 50 ms later.
+///   3. Hunting: 5× FOCUS_DATA with magnitude reversing 4 times.
+fn writeComplexAflgSuffix(writer: anytype, tick: *u64, step: u64) !void {
+    // 1. Focus bracket: 5 FOCUS_DATA events at step intervals.
+    var k: u32 = 0;
+    while (k < 5) : (k += 1) {
+        try writeAflg(writer, basicAflg(tick.*, 3, 500 + @as(u16, @intCast(k * 20))));
+        tick.* += step;
+    }
+
+    // 2. Tracking dwell: AF_POINT_CHANGE then FOCUS_DONE 50 ms later.
+    try writeAflg(writer, basicAflg(tick.*, 4, 0));
+    tick.* += 50_000; // 50 ms
+    try writeAflg(writer, basicAflg(tick.*, 2, 0));
+    tick.* += step;
+
+    // 3. Hunting: 5 FOCUS_DATA with oscillating magnitude (4 reversals).
+    const mags = [_]u16{ 100, 200, 100, 200, 100 };
+    for (mags) |m| {
+        try writeAflg(writer, basicAflg(tick.*, 3, m));
+        tick.* += 100_000;
+    }
+}
+
+fn basicAflg(timestamp: u64, event_type: u16, focus_magnitude: u16) AflgArgs {
+    return .{
+        .timestamp = timestamp,
+        .event_type = event_type,
+        .fields_present = mlv.Aflg.HAS_LV_FOCUS_DATA,
+        .af_point = 7,
+        .af_area_mode = 1,
+        .focus_magnitude = focus_magnitude,
+        .af_result = 0,
+        .hsp_countdown = 0,
+        .af_mf_physical = 0,
+        .is_state = 0,
+        .reserved1 = 0,
+        .focus_near = mlv.Rawx.SENTINEL_U16,
+        .focus_far = mlv.Rawx.SENTINEL_U16,
+        .focus_pos = mlv.Rawx.SENTINEL_U16,
+        .focal_length = mlv.Rawx.SENTINEL_U16,
+        .aperture_raw = 0,
+        .afma_offset = mlv.Rawx.SENTINEL_I32,
+    };
 }
 
 pub const RawxArgs = struct {
