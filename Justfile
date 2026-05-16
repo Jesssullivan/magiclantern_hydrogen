@@ -91,22 +91,32 @@ lint:
 # ── Firmware build ─────────────────────────────────────────────────────────
 
 # Build firmware for a single platform.
-#   Usage: just build PLATFORM=5D3.123
+#   Usage: just build 5D3.123
+# Makefile.globals hard-codes ARM_BINPATH = /usr/bin (line 16). Override
+# it on the command line so make picks up the flake-provided
+# arm-none-eabi-gcc instead of looking under /usr/bin.
 build PLATFORM:
-    make -C platform/{{PLATFORM}}
+    #!/usr/bin/env bash
+    set -euo pipefail
+    bin=$(dirname "$(command -v arm-none-eabi-gcc)")
+    make -C platform/{{PLATFORM}} ARM_BINPATH="$bin"
 
 # Build every in-scope platform sequentially.
 build-all:
     #!/usr/bin/env bash
     set -euo pipefail
+    bin=$(dirname "$(command -v arm-none-eabi-gcc)")
     for p in {{IN_SCOPE_PLATFORMS}}; do
       echo "── building $p ──"
-      make -C "platform/$p"
+      make -C "platform/$p" ARM_BINPATH="$bin"
     done
 
 # Build firmware modules (independent of platform).
 build-modules:
-    make -C modules
+    #!/usr/bin/env bash
+    set -euo pipefail
+    bin=$(dirname "$(command -v arm-none-eabi-gcc)")
+    make -C modules ARM_BINPATH="$bin"
 
 # Clean firmware build artifacts.
 clean:

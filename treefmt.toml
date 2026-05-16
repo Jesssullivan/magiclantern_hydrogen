@@ -4,44 +4,72 @@
 # The flake.nix also wires treefmt-nix with the same patterns for
 # `nix fmt` and `nix flake check` integration.
 #
-# Mirrors doc/CODING_STYLE for C/H (Allman, 4-space, 80-col via
-# .clang-format).
+# IMPORTANT: this repo is a fork of Magic Lantern. The upstream-tracked
+# sources under src/, modules/raw_video/, platform/, tcc/, minimal/,
+# build_tools/, doc/, data/, scripts/, etc. were not written to our
+# formatter standards and we do not want to mass-reformat them. The
+# treefmt scope is narrowed to ONLY the files this fork added:
+#
+#   AGENTS.md, CLAUDE.md, README in the new docs/, developer_guide/08_/09_/10_/,
+#   tools/raw-stack/, tools/af-log/,
+#   modules/raw_spectral/, modules/af_logger/,
+#   scripts/{bazel-cache-backed.sh,cache-attachment-contract.sh,integration-test-zig-tools.sh},
+#   flake.nix, Justfile, MODULE.bazel, BUILD.bazel, .bazelrc, .bazelversion,
+#   .clang-format, cliff.toml, renovate.json5, .gitattributes,
+#   .pre-commit-config.yaml, treefmt.toml.
+#
+# Mass-reformatting upstream sources is its own dedicated initiative
+# (do not undertake without explicit Linear scope).
 
 [formatter.clang-format]
 command = "clang-format"
 options = ["-i"]
-includes = ["*.c", "*.h", "*.cpp", "*.hpp"]
-excludes = [
-    "src/libs/**",
-    "tcc/**",
-    "minimal/qemu-*/**",
+includes = [
+    "modules/raw_spectral/*.c",
+    "modules/raw_spectral/*.h",
+    "modules/af_logger/*.c",
+    "modules/af_logger/*.h",
 ]
 
 [formatter.zig]
 command = "zig"
 options = ["fmt"]
-includes = ["*.zig"]
+includes = [
+    "tools/raw-stack/**/*.zig",
+    "tools/af-log/**/*.zig",
+]
 
 [formatter.prettier]
 command = "prettier"
 options = ["--write"]
-includes = ["*.md", "*.json", "*.json5", "*.yaml", "*.yml"]
-excludes = [
-    "developer_guide/*.html",
-    "doc/*.tex",
-    "flake.lock",
+includes = [
+    "AGENTS.md",
+    "CLAUDE.md",
+    "developer_guide/08_*.md",
+    "developer_guide/09_*.md",
+    "developer_guide/10_*.md",
+    "docs/**/*.md",
+    "tools/**/*.md",
+    "modules/raw_spectral/*.rst",
+    "modules/af_logger/*.rst",
+    "renovate.json5",
+    ".github/**/*.yml",
 ]
 
 [formatter.alejandra]
 command = "alejandra"
-includes = ["*.nix"]
+includes = ["flake.nix"]
 
 [formatter.taplo]
 command = "taplo"
 options = ["format"]
-includes = ["*.toml"]
+includes = ["treefmt.toml", "cliff.toml"]
 
 [formatter.shfmt]
 command = "shfmt"
 options = ["-i", "2", "-w"]
-includes = ["*.sh"]
+includes = [
+    "scripts/bazel-cache-backed.sh",
+    "scripts/cache-attachment-contract.sh",
+    "scripts/integration-test-zig-tools.sh",
+]
