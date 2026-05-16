@@ -1,0 +1,48 @@
+# Companion to renovate.json5 — refreshes flake.lock weekly so Renovate's
+# nix-flake manager has a deterministic baseline to diff against. Renovate
+# itself handles the PR; this workflow only bumps flake.lock when no
+# Renovate PR is open against it.
+
+name: renovate-pin
+
+on:
+  schedule:
+    - cron: "0 7 * * 1" # 07:00 UTC Monday
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  flake-update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: DeterminateSystems/nix-installer-action@v14
+        with:
+          extra-conf: |
+            experimental-features = nix-command flakes
+            extra-substituters = ${{ vars.ATTIC_SERVER || 'https://nix-cache.tinyland.dev' }}/${{ vars.ATTIC_CACHE || 'main' }}
+            extra-trusted-public-keys = ${{ secrets.ATTIC_PUBLIC_KEY }}
+
+      - name: nix flake update
+        run: nix flake update
+
+      - name: open or update PR
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: automation/flake-lock-bump
+          base: dev
+          title: "chore(deps): bump flake.lock"
+          body: |
+            Weekly `nix flake update` companion to Renovate.
+
+            If Renovate already has an open `nix flake inputs` PR, close
+            this one in its favor.
+          commit-message: "chore(deps): bump flake.lock"
+          delete-branch: true
+          add-paths: |
+            flake.lock

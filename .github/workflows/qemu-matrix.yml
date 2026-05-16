@@ -1,0 +1,41 @@
+# QEMU smoke matrix for magiclantern_hydrogen
+# - Nightly cron + workflow_dispatch + on label `qemu-please`
+# - Requires the sibling qemu-eos build path to be wired (TIN-1217)
+# - Today this workflow is a placeholder that fails loudly to make the
+#   gap visible in CI dashboards.
+
+name: qemu-matrix
+
+on:
+  schedule:
+    - cron: "17 5 * * *" # 05:17 UTC daily
+  workflow_dispatch:
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+jobs:
+  qemu:
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'qemu-please')
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - 5D2
+          - 5D3
+          - 5D4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@v14
+        with:
+          extra-conf: |
+            experimental-features = nix-command flakes
+            extra-substituters = ${{ vars.ATTIC_SERVER || 'https://nix-cache.tinyland.dev' }}/${{ vars.ATTIC_CACHE || 'main' }}
+            extra-trusted-public-keys = ${{ secrets.ATTIC_PUBLIC_KEY }}
+      - name: qemu-test ${{ matrix.platform }}
+        run: nix develop --command just qemu-test PLATFORM=${{ matrix.platform }}
