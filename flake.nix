@@ -5,13 +5,12 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
     flake-utils.url = "github:numtide/flake-utils";
 
-    zig-overlay = {
-      url = "github:mitchellh/zig-overlay";
-      # Do not follow nixpkgs — zig-overlay tracks newer nixpkgs internals
-      # (pkgs/development/compilers/zig/passthru.nix) that aren't on
-      # nixos-24.11. Mirrors the oauth-mux / zig-crypto pattern.
-      inputs.flake-utils.follows = "flake-utils";
-    };
+    # Zig comes from nixpkgs-unstable. zig-overlay was tried first but
+    # building zig 0.14.1 from source on aarch64-darwin exhausted /tmp
+    # and was a poor developer experience. nixpkgs-unstable carries a
+    # cached binary release. If we need a specific Zig version pin in
+    # the future, swap this back to zig-overlay with a working binary.
+    nixpkgs-zig.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
 
     treefmt-nix = {
       url = "github:numtide/treefmt-nix";
@@ -19,22 +18,18 @@
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, zig-overlay, treefmt-nix }:
+  outputs = { self, nixpkgs, nixpkgs-zig, flake-utils, treefmt-nix }:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        pkgs = import nixpkgs {
-          inherit system;
-          overlays = [ zig-overlay.overlays.default ];
-        };
+        pkgs = import nixpkgs { inherit system; };
+        pkgsZig = import nixpkgs-zig { inherit system; };
 
-        # Zig version mirrors ../oauth-mux / ../zig-crypto so a single
-        # zig-overlay binary is shared across the constellation.
-        zig = pkgs.zigpkgs."0.14.1";
+        # Zig from nixpkgs-unstable (binary release). Track whatever
+        # version unstable ships; if we need to pin, switch to a
+        # specific zig-overlay binary tag.
+        zig = pkgsZig.zig;
 
-        # arm-none-eabi cross toolchain for firmware. gcc-arm-embedded
-        # tracks the upstream ARM release; pin via flake.lock. If a
-        # specific ML platform regresses against the default version,
-        # introduce a per-platform pin instead of unpinning here.
+        # arm-none-eabi cross toolchain for firmware.
         armEmbedded = pkgs.gcc-arm-embedded;
 
         treefmtEval = treefmt-nix.lib.evalModule pkgs {

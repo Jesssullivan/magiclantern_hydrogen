@@ -1,7 +1,8 @@
 .{
-    .name = "af-log",
+    .name = .af_log,
     .version = "0.1.0",
-    .minimum_zig_version = "0.14.1",
+    .fingerprint = 0x87085192fef685bd,
+    .minimum_zig_version = "0.15.0",
     .paths = .{
         "build.zig",
         "build.zig.zon",
