@@ -17,6 +17,7 @@ const std = @import("std");
 const mlv = @import("mlv.zig");
 const fixture = @import("fixture.zig");
 const stack_mod = @import("stack.zig");
+const pixels_mod = @import("pixels.zig");
 
 const VERSION = "0.1.0";
 
@@ -31,6 +32,7 @@ const Subcommand = enum {
     frames,
     raw_stats,
     info,
+    pixel_stats,
 };
 
 fn parseSubcommand(arg: []const u8) ?Subcommand {
@@ -49,6 +51,7 @@ fn parseSubcommand(arg: []const u8) ?Subcommand {
         .{ "frames", .frames },
         .{ "raw-stats", .raw_stats },
         .{ "info", .info },
+        .{ "pixel-stats", .pixel_stats },
     };
     inline for (map) |entry| {
         if (std.mem.eql(u8, arg, entry[0])) return entry[1];
@@ -123,7 +126,104 @@ pub fn main() !u8 {
         .frames => return try runFrames(allocator, args[2..]),
         .raw_stats => return try runRawStats(allocator, args[2..]),
         .info => return try runInfo(allocator, args[2..]),
+        .pixel_stats => return try runPixelStats(allocator, args[2..]),
     }
+}
+
+fn runPixelStats(allocator: std.mem.Allocator, args: [][:0]u8) !u8 {
+    const stderr = std.io.getStdErr().writer();
+    if (args.len != 1) {
+        try stderr.print("raw-stack pixel-stats: expected 1 argument (path to MLV file)\n", .{});
+        return 2;
+    }
+
+    var file = std.fs.cwd().openFile(args[0], .{}) catch |err| {
+        try stderr.print("raw-stack pixel-stats: cannot open '{s}': {s}\n", .{ args[0], @errorName(err) });
+        return 1;
+    };
+    defer file.close();
+
+    var reader = mlv.Reader.init(allocator, file.reader().any());
+    defer reader.deinit();
+
+    const stdout = std.io.getStdOut().writer();
+
+    var rawi_found = false;
+    var bits_per_pixel: i32 = 14; // default
+
+    // Track aggregate stats across all VIDF frames.
+    var frame_count: u64 = 0;
+    var total_pixels: u64 = 0;
+    var agg_min: u16 = pixels_mod.MAX_PIXEL_VALUE;
+    var agg_max: u16 = 0;
+    var agg_sum: u64 = 0;
+
+    try stdout.print(
+        "{s:<8} {s:<10} {s:<8} {s:<8} {s:<10}\n",
+        .{ "n", "pixels", "min", "max", "mean" },
+    );
+    try stdout.print("{s}\n", .{"-" ** 48});
+
+    while (try reader.next()) |hdr| {
+        if (mlv.blockTypeEquals(hdr.block_type, "RAWI")) {
+            const r = try reader.readRawi(hdr);
+            rawi_found = true;
+            bits_per_pixel = r.bits_per_pixel;
+            if (bits_per_pixel != 14) {
+                try stderr.print(
+                    "raw-stack pixel-stats: bits_per_pixel={d}; only 14 is supported (see TIN-1223 for other formats)\n",
+                    .{bits_per_pixel},
+                );
+                return 1;
+            }
+        } else if (mlv.blockTypeEquals(hdr.block_type, "VIDF")) {
+            const r = try reader.readVidfWithPayload(hdr);
+            defer allocator.free(r.payload);
+
+            if (r.payload.len == 0) continue;
+            if (r.payload.len % pixels_mod.BYTES_PER_BLOCK != 0) {
+                try stderr.print(
+                    "raw-stack pixel-stats: VIDF frame {d} payload {d} bytes not a multiple of {d}; skipping\n",
+                    .{ r.vidf.frame_number, r.payload.len, pixels_mod.BYTES_PER_BLOCK },
+                );
+                continue;
+            }
+
+            const px = try pixels_mod.unpackBuffer(allocator, r.payload);
+            defer allocator.free(px);
+
+            var fmin: u16 = pixels_mod.MAX_PIXEL_VALUE;
+            var fmax: u16 = 0;
+            var fsum: u64 = 0;
+            for (px) |p| {
+                if (p < fmin) fmin = p;
+                if (p > fmax) fmax = p;
+                fsum += p;
+            }
+            const fmean: u64 = if (px.len > 0) fsum / px.len else 0;
+            try stdout.print(
+                "{d:<8} {d:<10} {d:<8} {d:<8} {d:<10}\n",
+                .{ r.vidf.frame_number, px.len, fmin, fmax, fmean },
+            );
+            frame_count += 1;
+            total_pixels += px.len;
+            if (fmin < agg_min) agg_min = fmin;
+            if (fmax > agg_max) agg_max = fmax;
+            agg_sum += fsum;
+        } else {
+            try reader.skipBlockBody(hdr);
+        }
+    }
+
+    try stdout.print("\n{d} VIDF frames, {d} total pixels (14-bit)\n", .{ frame_count, total_pixels });
+    if (total_pixels > 0) {
+        const agg_mean = agg_sum / total_pixels;
+        try stdout.print("aggregate pixel stats: min={d} max={d} mean={d}\n", .{ agg_min, agg_max, agg_mean });
+    }
+    if (!rawi_found) {
+        try stdout.print("(no RAWI block in stream; assumed 14-bit)\n", .{});
+    }
+    return 0;
 }
 
 fn runInfo(allocator: std.mem.Allocator, args: [][:0]u8) !u8 {

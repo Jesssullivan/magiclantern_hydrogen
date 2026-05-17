@@ -17,9 +17,10 @@ pub const Options = struct {
     /// Number of VIDF blocks to emit. 0 disables VIDF emission.
     vidf_frames: u32 = 4,
     /// Synthetic raw payload bytes per VIDF block. 0 = header-only.
-    /// Default 64 bytes lets `raw-stats` exercise byte aggregation
-    /// without needing realistic bayer data.
-    vidf_payload_bytes: u32 = 64,
+    /// Default 112 bytes = 8 raw_pixblocks = 64 pixels per frame,
+    /// so `pixel-stats` (which requires 14-byte alignment) can also
+    /// exercise the fixture.
+    vidf_payload_bytes: u32 = 112,
     /// Start hardware tick; subsequent blocks advance by `tick_step`.
     tick_start: u64 = 1_000_000,
     tick_step: u64 = 33_000, // ~30 Hz vsync at us granularity
