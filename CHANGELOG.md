@@ -7,6 +7,43 @@ This fork descends from `reticulatedpines/magiclantern_simplified`; commits
 prior to v0.1.0 are inherited from upstream and not enumerated here. See
 that repo's history for upstream Magic Lantern development.
 
+## [0.3.0] - 2026-05-17
+
+Outlier-rejection + calibration stacking primitives. Builds on the v0.2.0
+pixel-decoding stack with the two operations that turn a sequence of
+captures into a research-grade reduced frame: master-dark subtraction
+and iterative sigma-clipped mean stacking. Together with the existing
+`mean-frame` / `median-frame`, this covers the four main per-pixel
+reduction modes used in spectral / astro workflows on modified Canon
+sensors.
+
+### Added — raw-stack subcommands
+
+- `dark-subtract DARK IN.mlv [IN2.mlv ...] OUT[.fits|.bin]` — subtract a
+  master dark frame (raw u16 LE, typically the output of `mean-frame` or
+  `median-frame` over a set of dark exposures) from every VIDF pixel,
+  then per-pixel-mean the result across all frames. Clamps to [0, 16383]
+  and reports per-extreme clip counts.
+- `sigma-stack [--sigma N] [--iters N] IN.mlv [IN2.mlv ...] OUT` —
+  iterative sigma-clipped mean stacker. Per pixel: collect samples,
+  compute mean + stddev, reject samples >sigma*stddev from mean, repeat
+  for `iters` iterations, emit final mean. Defaults: sigma=3.0, iters=2.
+  Robust to transient outliers (cosmic rays, sensor glitches) without
+  the information loss of pure median. Reports total samples kept vs
+  total samples input.
+
+### Added — raw-stack internals
+
+- `sigmaClipMean` helper with unit tests covering: single-outlier
+  rejection at sigma=2.0, no-rejection within sigma=3.0 of a tight
+  cluster, empty input safety.
+
+### CI
+
+- `scripts/integration-test-zig-tools.sh` now also exercises
+  `dark-subtract` (raw + FITS output) and `sigma-stack` (default
+  parameters + `--sigma 1.5 --iters 3`).
+
 ## [0.2.0] - 2026-05-17
 
 Raw pixel decoding stack: the first sub-version where `raw-stack` can

@@ -174,6 +174,52 @@ if ! echo "$STACK_OUT" | grep -q "DIGITAL_GAIN     yes"; then
   exit 1
 fi
 
+echo "==> raw-stack dark-subtract on fixture (using mean-frame as master dark):"
+DARK_OUT="$WORKDIR/dark_subtracted.bin"
+DARK_LOG="$("$RAW_STACK" dark-subtract "$MEAN_OUT" "$FIXTURE" "$DARK_OUT")"
+echo "$DARK_LOG"
+if ! echo "$DARK_LOG" | grep -qE "stacked 4 VIDF frames -> 64 pixels"; then
+  echo "FAIL: expected 'stacked 4 VIDF frames -> 64 pixels' in dark-subtract output" >&2
+  exit 1
+fi
+dark_size=$(/usr/bin/stat -c %s "$DARK_OUT" 2>/dev/null || /usr/bin/stat -f %z "$DARK_OUT")
+if [[ "$dark_size" -ne 128 ]]; then
+  echo "FAIL: expected dark-subtract output to be 128 bytes, got $dark_size" >&2
+  exit 1
+fi
+
+echo "==> raw-stack dark-subtract on fixture (FITS output):"
+DARK_FITS="$WORKDIR/dark_subtracted.fits"
+"$RAW_STACK" dark-subtract "$MEAN_OUT" "$FIXTURE" "$DARK_FITS" >/dev/null
+darkfits_size=$(/usr/bin/stat -c %s "$DARK_FITS" 2>/dev/null || /usr/bin/stat -f %z "$DARK_FITS")
+if [[ "$darkfits_size" -ne 5760 ]]; then
+  echo "FAIL: expected dark-subtract FITS output to be 5760 bytes, got $darkfits_size" >&2
+  exit 1
+fi
+
+echo "==> raw-stack sigma-stack on fixture (defaults):"
+SIGMA_OUT="$WORKDIR/sigma.bin"
+SIGMA_LOG="$("$RAW_STACK" sigma-stack "$FIXTURE" "$SIGMA_OUT")"
+echo "$SIGMA_LOG"
+if ! echo "$SIGMA_LOG" | grep -qE "sigma=3\.00 iters=2 samples-per-pixel=4 pixels=64"; then
+  echo "FAIL: expected default sigma=3.00 iters=2 samples-per-pixel=4 pixels=64" >&2
+  exit 1
+fi
+sigma_size=$(/usr/bin/stat -c %s "$SIGMA_OUT" 2>/dev/null || /usr/bin/stat -f %z "$SIGMA_OUT")
+if [[ "$sigma_size" -ne 128 ]]; then
+  echo "FAIL: expected sigma-stack output to be 128 bytes, got $sigma_size" >&2
+  exit 1
+fi
+
+echo "==> raw-stack sigma-stack with --sigma 1.5 --iters 3:"
+SIGMA_OUT2="$WORKDIR/sigma_tight.bin"
+SIGMA_LOG2="$("$RAW_STACK" sigma-stack --sigma 1.5 --iters 3 "$FIXTURE" "$SIGMA_OUT2")"
+echo "$SIGMA_LOG2"
+if ! echo "$SIGMA_LOG2" | grep -qE "sigma=1\.50 iters=3"; then
+  echo "FAIL: expected sigma=1.50 iters=3 in custom sigma-stack output" >&2
+  exit 1
+fi
+
 COMPLEX="$WORKDIR/complex.mlv"
 echo "==> Generating complex fixture at $COMPLEX"
 "$RAW_STACK" fixture "$COMPLEX" complex
