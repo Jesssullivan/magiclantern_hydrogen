@@ -29,6 +29,7 @@ const Subcommand = enum {
     calibrate,
     fixture,
     frames,
+    raw_stats,
 };
 
 fn parseSubcommand(arg: []const u8) ?Subcommand {
@@ -45,6 +46,7 @@ fn parseSubcommand(arg: []const u8) ?Subcommand {
         .{ "calibrate", .calibrate },
         .{ "fixture", .fixture },
         .{ "frames", .frames },
+        .{ "raw-stats", .raw_stats },
     };
     inline for (map) |entry| {
         if (std.mem.eql(u8, arg, entry[0])) return entry[1];
@@ -117,7 +119,76 @@ pub fn main() !u8 {
         },
         .fixture => return try runFixture(args[2..]),
         .frames => return try runFrames(allocator, args[2..]),
+        .raw_stats => return try runRawStats(allocator, args[2..]),
     }
+}
+
+fn runRawStats(allocator: std.mem.Allocator, args: [][:0]u8) !u8 {
+    const stderr = std.io.getStdErr().writer();
+    if (args.len != 1) {
+        try stderr.print("raw-stack raw-stats: expected 1 argument (path to MLV file)\n", .{});
+        return 2;
+    }
+
+    var file = std.fs.cwd().openFile(args[0], .{}) catch |err| {
+        try stderr.print("raw-stack raw-stats: cannot open '{s}': {s}\n", .{ args[0], @errorName(err) });
+        return 1;
+    };
+    defer file.close();
+
+    var reader = mlv.Reader.init(allocator, file.reader().any());
+    defer reader.deinit();
+
+    const stdout = std.io.getStdOut().writer();
+    try stdout.print(
+        "{s:<8} {s:<10} {s:<8} {s:<8} {s:<10}\n",
+        .{ "n", "payload", "min", "max", "mean" },
+    );
+    try stdout.print("{s}\n", .{"-" ** 50});
+
+    var frame_count: u64 = 0;
+    var total_bytes: u64 = 0;
+    var agg_min: u8 = 255;
+    var agg_max: u8 = 0;
+    var agg_sum: u64 = 0;
+
+    while (try reader.next()) |hdr| {
+        if (mlv.blockTypeEquals(hdr.block_type, "VIDF")) {
+            const r = try reader.readVidfWithPayload(hdr);
+            defer allocator.free(r.payload);
+
+            var fmin: u8 = 255;
+            var fmax: u8 = 0;
+            var fsum: u64 = 0;
+            for (r.payload) |b| {
+                if (b < fmin) fmin = b;
+                if (b > fmax) fmax = b;
+                fsum += b;
+            }
+            const fmean: u64 = if (r.payload.len > 0) fsum / r.payload.len else 0;
+            try stdout.print(
+                "{d:<8} {d:<10} {d:<8} {d:<8} {d:<10}\n",
+                .{ r.vidf.frame_number, r.payload.len, fmin, fmax, fmean },
+            );
+
+            frame_count += 1;
+            total_bytes += r.payload.len;
+            if (r.payload.len > 0) {
+                if (fmin < agg_min) agg_min = fmin;
+                if (fmax > agg_max) agg_max = fmax;
+                agg_sum += fsum;
+            }
+        } else {
+            try reader.skipBlockBody(hdr);
+        }
+    }
+
+    try stdout.print("\n{d} VIDF blocks, {d} total payload bytes\n", .{ frame_count, total_bytes });
+    if (total_bytes > 0) {
+        const agg_mean = agg_sum / total_bytes;
+        try stdout.print("aggregate byte stats: min={d} max={d} mean={d}\n", .{ agg_min, agg_max, agg_mean });
+    }
+    return 0;
 }
 
 fn runFrames(allocator: std.mem.Allocator, args: [][:0]u8) !u8 {

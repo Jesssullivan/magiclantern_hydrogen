@@ -14,9 +14,12 @@ const mlv = @import("mlv.zig");
 pub const Options = struct {
     rawx_frames: u32 = 4,
     aflg_events: u32 = 6,
-    /// Number of VIDF blocks to emit (with zero-byte raw payload —
-    /// header-only). 0 disables VIDF emission.
+    /// Number of VIDF blocks to emit. 0 disables VIDF emission.
     vidf_frames: u32 = 4,
+    /// Synthetic raw payload bytes per VIDF block. 0 = header-only.
+    /// Default 64 bytes lets `raw-stats` exercise byte aggregation
+    /// without needing realistic bayer data.
+    vidf_payload_bytes: u32 = 64,
     /// Start hardware tick; subsequent blocks advance by `tick_step`.
     tick_start: u64 = 1_000_000,
     tick_step: u64 = 33_000, // ~30 Hz vsync at us granularity
@@ -39,7 +42,7 @@ pub fn writeFixture(writer: anytype, opts: Options) !void {
             .panPos_x = 0,
             .panPos_y = 0,
             .frameSpace = 0,
-        });
+        }, opts.vidf_payload_bytes);
         tick += opts.tick_step;
     }
 
@@ -158,8 +161,10 @@ pub const VidfArgs = struct {
     frameSpace: u32,
 };
 
-fn writeVidf(writer: anytype, args: VidfArgs) !void {
-    const total: u32 = @intCast(mlv.BLOCK_HEADER_SIZE + mlv.Vidf.PAYLOAD_SIZE);
+fn writeVidf(writer: anytype, args: VidfArgs, payload_bytes: u32) !void {
+    const total: u32 = @intCast(
+        mlv.BLOCK_HEADER_SIZE + mlv.Vidf.PAYLOAD_SIZE + args.frameSpace + payload_bytes,
+    );
     try writer.writeAll("VIDF");
     try writer.writeInt(u32, total, .little);
     try writer.writeInt(u64, args.timestamp, .little);
@@ -170,6 +175,23 @@ fn writeVidf(writer: anytype, args: VidfArgs) !void {
     try writer.writeInt(u16, args.panPos_x, .little);
     try writer.writeInt(u16, args.panPos_y, .little);
     try writer.writeInt(u32, args.frameSpace, .little);
+
+    // frameSpace padding (zeros).
+    var space_left = args.frameSpace;
+    var z: [256]u8 = [_]u8{0} ** 256;
+    while (space_left > 0) {
+        const w = @min(@as(u32, z.len), space_left);
+        try writer.writeAll(z[0..w]);
+        space_left -= w;
+    }
+
+    // Synthetic raw payload: byte = (frame_number + i) & 0xFF.
+    // Lets raw-stats compute deterministic byte-aggregate stats.
+    var i: u32 = 0;
+    while (i < payload_bytes) : (i += 1) {
+        const b: u8 = @intCast((args.frame_number + i) & 0xFF);
+        try writer.writeAll(&[_]u8{b});
+    }
 }
 
 fn writeRawx(writer: anytype, args: RawxArgs) !void {

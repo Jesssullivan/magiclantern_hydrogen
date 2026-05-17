@@ -251,6 +251,51 @@ pub const Reader = struct {
         };
     }
 
+    /// Read a VIDF block keeping the raw payload bytes (after VIDF header
+    /// and frameSpace padding). Caller owns the returned slice.
+    pub fn readVidfWithPayload(
+        self: *Reader,
+        hdr: BlockHeader,
+    ) !struct { vidf: Vidf, payload: []u8 } {
+        const remaining = @as(usize, hdr.block_size) -| BLOCK_HEADER_SIZE;
+        if (remaining < Vidf.PAYLOAD_SIZE) return error.TruncatedVidf;
+
+        var hdrbuf: [Vidf.PAYLOAD_SIZE]u8 = undefined;
+        const n = try self.underlying.readAll(&hdrbuf);
+        if (n < Vidf.PAYLOAD_SIZE) return error.UnexpectedEof;
+
+        const v = Vidf{
+            .frame_number = std.mem.readInt(u32, hdrbuf[0..4], .little),
+            .cropPos_x = std.mem.readInt(u16, hdrbuf[4..6], .little),
+            .cropPos_y = std.mem.readInt(u16, hdrbuf[6..8], .little),
+            .panPos_x = std.mem.readInt(u16, hdrbuf[8..10], .little),
+            .panPos_y = std.mem.readInt(u16, hdrbuf[10..12], .little),
+            .frameSpace = std.mem.readInt(u32, hdrbuf[12..16], .little),
+        };
+
+        // Skip frameSpace padding.
+        var skipped: usize = 0;
+        var sink: [4096]u8 = undefined;
+        while (skipped < v.frameSpace) {
+            const want = @min(sink.len, v.frameSpace - skipped);
+            const got = try self.underlying.readAll(sink[0..want]);
+            if (got == 0) return error.UnexpectedEof;
+            skipped += got;
+        }
+
+        // Remaining is the raw payload bytes.
+        const consumed = Vidf.PAYLOAD_SIZE + v.frameSpace;
+        const payload_len = if (remaining > consumed) remaining - consumed else 0;
+        const payload = try self.allocator.alloc(u8, payload_len);
+        errdefer self.allocator.free(payload);
+        if (payload_len > 0) {
+            const got = try self.underlying.readAll(payload);
+            if (got < payload_len) return error.UnexpectedEof;
+        }
+
+        return .{ .vidf = v, .payload = payload };
+    }
+
     pub fn readAflg(self: *Reader, hdr: BlockHeader) !Aflg {
         const remaining = @as(usize, hdr.block_size) -| BLOCK_HEADER_SIZE;
         if (remaining < Aflg.PAYLOAD_SIZE) return error.TruncatedAflg;

@@ -75,6 +75,21 @@ if ! echo "$FRAMES_OUT" | grep -q "4 VIDF blocks total"; then
   exit 1
 fi
 
+echo "==> raw-stack raw-stats on fixture:"
+RAWSTATS_OUT="$("$RAW_STACK" raw-stats "$FIXTURE")"
+echo "$RAWSTATS_OUT"
+if ! echo "$RAWSTATS_OUT" | grep -q "4 VIDF blocks"; then
+  echo "FAIL: expected 4 VIDF blocks in raw-stats output" >&2
+  exit 1
+fi
+# Fixture writes 64 bytes per VIDF (frame_number + i mod 256). For
+# frame 0, payload is 0..63 -> mean ~31. For frame 3, payload is
+# 3..66 -> mean ~34. Aggregate should be in that range.
+if ! echo "$RAWSTATS_OUT" | grep -qE "256 total payload bytes"; then
+  echo "FAIL: expected 256 total payload bytes (4 frames x 64 bytes each)" >&2
+  exit 1
+fi
+
 echo "==> raw-stack stack on fixture (RAWX aggregate):"
 STACK_OUT="$("$RAW_STACK" stack "$FIXTURE")"
 echo "$STACK_OUT"
