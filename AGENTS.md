@@ -118,6 +118,52 @@ Heavy or non-cached local Bazel work is not a supported product path on
 developer machines. Local flake / devshell / direnv workflows attach to
 the same shared substrate that CI uses.
 
+## Release Pipeline
+
+Two release surfaces, both reusing the same build matrix:
+
+- **Semver** — push a `v[0-9]+.[0-9]+.[0-9]+*` tag → `release.yml` fires.
+  Tags containing `-` are marked prerelease.
+- **Nightly** — daily 07:17 UTC cron + `gh workflow run nightly.yml`.
+  Tag scheme `nightly-YYYYMMDD-<short-sha>`. Skipped when `dev` HEAD has
+  not moved since the previous nightly. Last 7 retained; older pruned
+  via `scripts/prune-nightlies.sh`.
+
+Every release ships:
+
+- 4 per-camera firmware tarballs (`magiclantern-hydrogen-<TAG>-<P>.tar.gz`)
+  with `autoexec.bin`, `ML-SETUP.FIR`, `modules/*.mo`, `MODULES.txt`,
+  `INSTALL.md`, per-platform `README.md`.
+- 4 per-OS-arch host-tool tarballs (`raw-stack` / `af-log` ×
+  `x86_64-linux` / `aarch64-macos`) with executable + `README.md` +
+  `USAGE.md` + `LICENSE`.
+- 8 SHA256 sidecars.
+
+Both surfaces flow through three reusable workflows:
+
+| Workflow | Purpose |
+|---|---|
+| `_build-firmware.yml` | Matrix over 4 platforms; uploads raw firmware artifact bundle per platform. |
+| `_build-tools.yml` | Matrix over (raw-stack, af-log) × (linux x86_64 musl static, macos aarch64 native on macos-14). |
+| `_publish-release.yml` | Downloads all artifacts, runs `scripts/compose-firmware-tarballs.sh` + `scripts/compose-tool-tarballs.sh`, renders body via `scripts/render-release-body.sh`, publishes via softprops. |
+
+Release-body template (`scripts/render-release-body.sh`) is **canonical**.
+Edit it, never the live release body. Per-tarball install one-liners are
+in the template; per-camera install detail is in `docs/INSTALL.md`;
+host-tool reference is in `docs/USAGE.md`. Both ship inside the
+tarballs themselves.
+
+Justfile entry points:
+
+- `just release-notes-preview <TAG>` — render the body locally.
+- `just nightly-trigger` / `just nightly-status` — kick / inspect runs.
+- `just release <TAG>` → `just push` → `gh api PATCH /git/refs/tags/<TAG>` —
+  the dev-branch push ruleset blocks direct tag push; the API path is the
+  supported workaround.
+
+For the deferred operator step that engages strict cache-substrate mode,
+see Linear `TIN-1268`.
+
 ## Where to Look
 
 | Topic | Path |
