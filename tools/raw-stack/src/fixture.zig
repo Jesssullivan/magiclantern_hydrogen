@@ -34,17 +34,25 @@ pub fn writeFixture(writer: anytype, opts: Options) !void {
     var tick = opts.tick_start;
 
     // Emit a RAWI block first (one-shot file header) when fixture
-    // includes any VIDF frames. Synthetic values match a 5D3-like
-    // raw mode: 14-bit, 1920x1080 logical resolution.
-    if (opts.vidf_frames > 0) {
+    // includes any VIDF frames. RAWI dimensions are derived from the
+    // actual VIDF payload size so per-pixel subcommands (bayer-stats,
+    // mean-frame --fits) can place pixels on a real grid without us
+    // emitting megabytes of synthetic 1920x1080 data.
+    if (opts.vidf_frames > 0 and opts.vidf_payload_bytes > 0) {
+        const blocks = opts.vidf_payload_bytes / 14;
+        const total_pixels = blocks * 8;
+        // Choose width = 8, height = total_pixels/8 so RGGB plane logic
+        // has a sane even-row/even-col grid. payload=112 -> 8x8.
+        const fixture_w: i32 = 8;
+        const fixture_h: i32 = @intCast(total_pixels / 8);
         try writeRawi(writer, .{
             .timestamp = tick,
-            .x_res = 1920,
-            .y_res = 1080,
-            .width = 1920,
-            .height = 1080,
-            .pitch = 1920 * 14 / 8, // 14-bit packed
-            .frame_size = (1920 * 1080 * 14) / 8,
+            .x_res = @intCast(fixture_w),
+            .y_res = @intCast(fixture_h),
+            .width = fixture_w,
+            .height = fixture_h,
+            .pitch = fixture_w * 14 / 8,
+            .frame_size = @intCast(opts.vidf_payload_bytes),
             .bits_per_pixel = 14,
         });
     }

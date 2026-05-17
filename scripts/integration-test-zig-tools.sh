@@ -70,8 +70,8 @@ fi
 echo "==> raw-stack info on fixture:"
 INFO_OUT="$("$RAW_STACK" info "$FIXTURE")"
 echo "$INFO_OUT"
-if ! echo "$INFO_OUT" | grep -q "RAWI: 1920x1080"; then
-  echo "FAIL: expected RAWI: 1920x1080 in info output" >&2
+if ! echo "$INFO_OUT" | grep -q "RAWI: 8x8"; then
+  echo "FAIL: expected RAWI: 8x8 in info output (fixture geometry)" >&2
   exit 1
 fi
 if ! echo "$INFO_OUT" | grep -q "14-bit"; then
@@ -131,6 +131,17 @@ if ! /usr/bin/head -c 9 "$FITS_OUT" | grep -q "SIMPLE  ="; then
   /usr/bin/head -c 80 "$FITS_OUT" | /usr/bin/od -c | /usr/bin/head -3 >&2
   exit 1
 fi
+
+echo "==> raw-stack bayer-stats on fixture:"
+BAYER_OUT="$("$RAW_STACK" bayer-stats "$FIXTURE")"
+echo "$BAYER_OUT"
+# 4 frames x 64 pixels = 256 total. Split RGGB: 64 per plane.
+for plane in "R " "G1" "G2" "B "; do
+  if ! echo "$BAYER_OUT" | grep -qE "${plane}.*count=64"; then
+    echo "FAIL: expected ${plane} count=64 in bayer-stats output" >&2
+    exit 1
+  fi
+done
 
 echo "==> raw-stack pixel-stats on fixture:"
 PIXSTATS_OUT="$("$RAW_STACK" pixel-stats "$FIXTURE")"

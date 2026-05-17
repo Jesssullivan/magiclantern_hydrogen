@@ -19,6 +19,7 @@ const fixture = @import("fixture.zig");
 const stack_mod = @import("stack.zig");
 const pixels_mod = @import("pixels.zig");
 const fits = @import("fits.zig");
+const bayer = @import("bayer.zig");
 
 const VERSION = "0.1.0";
 
@@ -35,6 +36,7 @@ const Subcommand = enum {
     info,
     pixel_stats,
     mean_frame,
+    bayer_stats,
 };
 
 fn parseSubcommand(arg: []const u8) ?Subcommand {
@@ -55,6 +57,7 @@ fn parseSubcommand(arg: []const u8) ?Subcommand {
         .{ "info", .info },
         .{ "pixel-stats", .pixel_stats },
         .{ "mean-frame", .mean_frame },
+        .{ "bayer-stats", .bayer_stats },
     };
     inline for (map) |entry| {
         if (std.mem.eql(u8, arg, entry[0])) return entry[1];
@@ -131,7 +134,99 @@ pub fn main() !u8 {
         .info => return try runInfo(allocator, args[2..]),
         .pixel_stats => return try runPixelStats(allocator, args[2..]),
         .mean_frame => return try runMeanFrame(allocator, args[2..]),
+        .bayer_stats => return try runBayerStats(allocator, args[2..]),
     }
+}
+
+/// Per-VIDF + aggregate RGGB plane statistics.
+fn runBayerStats(allocator: std.mem.Allocator, args: [][:0]u8) !u8 {
+    const stderr = std.io.getStdErr().writer();
+    if (args.len != 1) {
+        try stderr.print("raw-stack bayer-stats: expected 1 argument (path to MLV file)\n", .{});
+        return 2;
+    }
+
+    var file = std.fs.cwd().openFile(args[0], .{}) catch |err| {
+        try stderr.print("raw-stack bayer-stats: cannot open '{s}': {s}\n", .{ args[0], @errorName(err) });
+        return 1;
+    };
+    defer file.close();
+
+    var reader = mlv.Reader.init(allocator, file.reader().any());
+    defer reader.deinit();
+
+    const stdout = std.io.getStdOut().writer();
+    var rawi: ?mlv.Rawi = null;
+
+    // Aggregate plane sums across all frames in the file.
+    var agg = [_]bayer.PlaneStats{
+        .{ .plane = .r, .count = 0, .min = std.math.maxInt(u16), .max = 0, .sum = 0 },
+        .{ .plane = .g1, .count = 0, .min = std.math.maxInt(u16), .max = 0, .sum = 0 },
+        .{ .plane = .g2, .count = 0, .min = std.math.maxInt(u16), .max = 0, .sum = 0 },
+        .{ .plane = .b, .count = 0, .min = std.math.maxInt(u16), .max = 0, .sum = 0 },
+    };
+
+    try stdout.print(
+        "{s:<8} {s:<6} {s:<8} {s:<8} {s:<10}\n",
+        .{ "frame", "plane", "min", "max", "mean" },
+    );
+    try stdout.print("{s}\n", .{"-" ** 48});
+
+    var vidf_count: u64 = 0;
+    while (try reader.next()) |hdr| {
+        if (mlv.blockTypeEquals(hdr.block_type, "RAWI")) {
+            rawi = try reader.readRawi(hdr);
+            if (rawi.?.bits_per_pixel != 14) {
+                try stderr.print("raw-stack bayer-stats: only 14-bit RAWI supported\n", .{});
+                return 1;
+            }
+        } else if (mlv.blockTypeEquals(hdr.block_type, "VIDF")) {
+            if (rawi == null) {
+                try stderr.print("raw-stack bayer-stats: VIDF before RAWI; skipping\n", .{});
+                try reader.skipBlockBody(hdr);
+                continue;
+            }
+            const r = try reader.readVidfWithPayload(hdr);
+            defer allocator.free(r.payload);
+            if (r.payload.len == 0 or r.payload.len % pixels_mod.BYTES_PER_BLOCK != 0) continue;
+
+            const px = try pixels_mod.unpackBuffer(allocator, r.payload);
+            defer allocator.free(px);
+
+            const w: usize = @intCast(rawi.?.width);
+            const h: usize = @intCast(rawi.?.height);
+            if (px.len != w * h) continue;
+
+            const stats = try bayer.summarize(px, w, h);
+            for (stats) |s| {
+                try stdout.print(
+                    "{d:<8} {s:<6} {d:<8} {d:<8} {d:<10}\n",
+                    .{ r.vidf.frame_number, bayer.planeName(s.plane), s.min, s.max, s.mean() },
+                );
+                // Merge into aggregate.
+                const idx = @intFromEnum(s.plane);
+                var a = &agg[idx];
+                a.count += s.count;
+                a.sum += s.sum;
+                if (s.min < a.min) a.min = s.min;
+                if (s.max > a.max) a.max = s.max;
+            }
+            vidf_count += 1;
+        } else {
+            try reader.skipBlockBody(hdr);
+        }
+    }
+
+    try stdout.print("\n{d} VIDF frames decoded\n", .{vidf_count});
+    try stdout.print("Aggregate (across all frames):\n", .{});
+    for (agg) |a| {
+        const min_display = if (a.count > 0) a.min else 0;
+        try stdout.print(
+            "  {s:<6} count={d:<8} min={d:<6} max={d:<6} mean={d}\n",
+            .{ bayer.planeName(a.plane), a.count, min_display, a.max, a.mean() },
+        );
+    }
+    return 0;
 }
 
 /// mean-frame INPUT.mlv [INPUT2.mlv ...] OUT
