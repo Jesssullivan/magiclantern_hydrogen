@@ -67,10 +67,10 @@ alias(
     actual = ":raw-stack-native",
 )
 
-# Unit tests — invokes `zig build test` so existing test discovery
-# (every `test "..."` block under src/) just works.
-sh_test(
-    name = "test",
-    srcs = ["test_runner.sh"],
-    tags = ["no-sandbox", "requires-zig"],
-)
+# Unit tests are exercised by the `zig-tools` ci job via `zig build test
+# --summary all`. We deliberately do NOT add a Bazel sh_test wrap here:
+# `bazel test` doesn't set BUILD_WORKSPACE_DIRECTORY (only `bazel run`
+# does), and the alternative — adding sources via `data` and resolving
+# them through runfiles — is more complexity than the value of Bazel
+# test-reporter integration justifies for this tool. The Bazel surface
+# stays orchestration-only; Zig owns the test surface.

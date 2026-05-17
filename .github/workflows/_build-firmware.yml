@@ -19,7 +19,9 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Defaults to GitHub-hosted runner; flip RUNS_ON_HEAVY repo variable
+    # to tinyland-nix once the ARC pool accepts hydrogen (see TIN-1279).
+    runs-on: ${{ vars.RUNS_ON_HEAVY || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:

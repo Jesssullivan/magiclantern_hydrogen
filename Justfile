@@ -347,10 +347,16 @@ tools-build TOOL TARGET:
     bazelisk build //tools/{{TOOL}}:{{TOOL}}-{{TARGET}}
     ls -la bazel-bin/tools/{{TOOL}}/
 
-# Run unit tests via Bazel for every tool. Each sh_test shells out to
-# `zig build test --summary all`.
+# Run unit tests for every tool via zig directly. Bazel is build-only
+# for tools (sh_test wraps drop BUILD_WORKSPACE_DIRECTORY; not worth
+# the runfiles plumbing). Zig owns the test surface.
 tools-test:
-    bazelisk test //tools/...
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for d in tools/raw-stack tools/af-log; do
+      [ -f "$d/build.zig" ] || continue
+      ( cd "$d" && zig build test --summary all )
+    done
 
 # Cross-build every tool for every shipped target.
 tools-build-all:

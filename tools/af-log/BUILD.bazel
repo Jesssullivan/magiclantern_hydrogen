@@ -49,8 +49,5 @@ alias(
     actual = ":af-log-native",
 )
 
-sh_test(
-    name = "test",
-    srcs = ["test_runner.sh"],
-    tags = ["no-sandbox", "requires-zig"],
-)
+# Tests run via `zig build test` in the zig-tools ci job. See
+# tools/raw-stack/BUILD.bazel for rationale.

@@ -24,7 +24,9 @@ on:
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    # See TIN-1279 — flip RUNS_ON_HEAVY to tinyland-nix to attach to the
+    # Flywheel cache substrate for the heavy publish-time downloads.
+    runs-on: ${{ vars.RUNS_ON_HEAVY || 'ubuntu-latest' }}
     permissions:
       contents: write
     steps:

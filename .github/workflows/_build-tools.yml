@@ -21,7 +21,8 @@ on:
 
 jobs:
   build-linux:
-    runs-on: ubuntu-latest
+    # See TIN-1279 — flip RUNS_ON_HEAVY to a self-hosted label when ready.
+    runs-on: ${{ vars.RUNS_ON_HEAVY || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:

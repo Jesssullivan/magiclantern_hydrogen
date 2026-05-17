@@ -38,7 +38,7 @@ jobs:
         run: nix develop --command just lint
 
   build-firmware:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNS_ON_HEAVY || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
@@ -90,7 +90,7 @@ jobs:
   zig-tools:
     # Build + test the host-side Zig tools (raw-stack, af-log). Linux
     # avoids the macOS 26.5 SDK linker friction documented in TIN-1241.
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNS_ON_HEAVY || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
@@ -125,7 +125,7 @@ jobs:
     # ships) and runs `bazel test //tools/...` (which shells out to
     # `zig build test`). Exercises action cache via .bazelrc ci-cached
     # config when ATTIC_* secrets are present.
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNS_ON_HEAVY || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -154,13 +154,8 @@ jobs:
             nix develop --command bazelisk build \
               //tools/raw-stack:raw-stack-linux-x86_64 //tools/af-log:af-log-linux-x86_64
           fi
-      - name: bazel test tools (zig build test under sh_test)
-        run: |
-          if [ -n "${BAZEL_REMOTE_CACHE:-}" ]; then
-            nix develop --command bash scripts/bazel-cache-backed.sh test //tools/...
-          else
-            nix develop --command bazelisk test //tools/...
-          fi
+      # Unit tests are exercised by the `zig-tools` job (zig build test
+      # --summary all) — Bazel here is orchestration-only.
       - name: verify Bazel output binaries exist
         run: |
           ls -la bazel-bin/tools/raw-stack/ bazel-bin/tools/af-log/
@@ -171,7 +166,7 @@ jobs:
     # End-to-end: build both Zig tools, generate a synthetic MLV
     # fixture, decode it, assert expected counts. Catches block-layout
     # regressions without needing firmware in the loop.
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNS_ON_HEAVY || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
         with:
