@@ -20,7 +20,9 @@ body = """
 {% else -%}
     ## [Unreleased]
 {% endif -%}
-
+{% if previous and previous.version and version %}
+**Full diff:** [{{ previous.version }}…{{ version }}]({{ self::remote_url() }}/compare/{{ previous.version }}...{{ version }})
+{% endif %}
 {% for group, commits in commits | group_by(attribute="group") %}
     ### {{ group | striptags | trim | upper_first }}
     {% for commit in commits %}

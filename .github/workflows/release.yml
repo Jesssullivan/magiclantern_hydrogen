@@ -1,7 +1,12 @@
-# Release workflow for magiclantern_hydrogen
-# - Triggered by pushing a vX.Y.Z tag
-# - Builds firmware for the in-scope matrix, attaches artifacts, regenerates
-#   CHANGELOG via git-cliff (consumed from flake.nix).
+# Semantic-version release workflow.
+#
+# Trigger: push of a v* tag (e.g. v0.4.0), or manual workflow_dispatch.
+# Delegates to reusable workflows:
+#   _build-firmware.yml  → 4-platform firmware artifacts
+#   _build-tools.yml     → 2 host tools × 2 platforms = 4 artifacts
+#   _publish-release.yml → compose tarballs, render body, publish to GH
+#
+# Tags containing '-' (e.g. v0.4.0-rc1) are auto-marked prerelease.
 
 name: release
 
@@ -12,59 +17,49 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to release (e.g. v0.1.0)"
+        description: "Tag to release (e.g. v0.4.0)."
         required: true
 
 permissions:
   contents: write
 
 jobs:
-  release:
+  resolve:
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      prerelease: ${{ steps.tag.outputs.prerelease }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: DeterminateSystems/nix-installer-action@v14
-        with:
-          extra-conf: |
-            experimental-features = nix-command flakes
-            extra-substituters = ${{ vars.ATTIC_SERVER || 'https://nix-cache.tinyland.dev' }}/${{ vars.ATTIC_CACHE || 'main' }}
-            extra-trusted-public-keys = ${{ secrets.ATTIC_PUBLIC_KEY }}
-
-      - name: build-all
-        run: nix develop --command just build-all
-
-      - name: stage release artifacts
-        run: |
-          set -euo pipefail
-          mkdir -p release-artifacts
-          # Per-platform rename so artifacts from each model don't collide
-          # in the flat release-artifacts/ directory. v0.1.0 shipped only
-          # one autoexec.bin because the unconditional cp overwrote each
-          # platform's output with the next; renaming on copy preserves all.
-          for p in 5D2.212 5D3.113 5D3.123 5D4.133; do
-            while IFS= read -r -d '' src; do
-              base=$(basename "$src")
-              ext="${base##*.}"
-              stem="${base%.*}"
-              cp "$src" "release-artifacts/${stem}-${p}.${ext}"
-            done < <(find "platform/$p" -maxdepth 4 \( -name '*.fir' -o -name 'autoexec.bin' -o -name 'ML*.fir' \) -print0 2>/dev/null)
-          done
-          ls -la release-artifacts/
-
-      - name: generate changelog excerpt
+      - id: tag
         run: |
           set -euo pipefail
           tag="${{ github.event.inputs.tag || github.ref_name }}"
-          nix develop --command git-cliff --latest --strip header -o RELEASE_NOTES.md
-          echo "tag=${tag}" >> "$GITHUB_ENV"
+          echo "tag=${tag}"        >> "$GITHUB_OUTPUT"
+          if [[ "${tag}" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
 
-      - uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ env.tag }}
-          name: ${{ env.tag }}
-          body_path: RELEASE_NOTES.md
-          files: release-artifacts/*
-          draft: false
-          prerelease: ${{ contains(env.tag, '-') }}
+  firmware:
+    needs: resolve
+    uses: ./.github/workflows/_build-firmware.yml
+    with:
+      tag: ${{ needs.resolve.outputs.tag }}
+    secrets: inherit
+
+  tools:
+    needs: resolve
+    uses: ./.github/workflows/_build-tools.yml
+    with:
+      tag: ${{ needs.resolve.outputs.tag }}
+    secrets: inherit
+
+  publish:
+    needs: [resolve, firmware, tools]
+    uses: ./.github/workflows/_publish-release.yml
+    with:
+      tag: ${{ needs.resolve.outputs.tag }}
+      prerelease: ${{ needs.resolve.outputs.prerelease == 'true' }}
+      kind: semver
+    secrets: inherit

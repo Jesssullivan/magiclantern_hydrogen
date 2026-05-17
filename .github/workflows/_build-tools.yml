@@ -1,0 +1,91 @@
+# Reusable: build host-side Zig tools for the release matrix.
+#
+# Called by release.yml and nightly.yml. Each (tool x target) produces one
+# `<tool>-<suffix>` artifact whose root contains the executable, ready for
+# the publish workflow's compose-tool-tarballs.sh to wrap with docs.
+#
+# Targets:
+#   - Linux x86_64 (static musl) — built on ubuntu-latest via cross-build
+#   - macOS aarch64 (native dylib) — built on macos-14 (Apple Silicon)
+
+name: _build-tools
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Tag this build is associated with (informational)."
+        required: false
+        type: string
+        default: "untagged"
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        tool: [raw-stack, af-log]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - uses: DeterminateSystems/nix-installer-action@v14
+        with:
+          extra-conf: |
+            experimental-features = nix-command flakes
+            extra-substituters = ${{ vars.ATTIC_SERVER || 'https://nix-cache.tinyland.dev' }}/${{ vars.ATTIC_CACHE || 'main' }}
+            extra-trusted-public-keys = ${{ secrets.ATTIC_PUBLIC_KEY }}
+      - name: zig build (${{ matrix.tool }}, x86_64-linux-musl static)
+        working-directory: tools/${{ matrix.tool }}
+        run: |
+          nix shell nixpkgs#zig_0_14 --command \
+            zig build -Dtarget=x86_64-linux-musl -Doptimize=ReleaseSafe
+      - name: stage artifact
+        run: |
+          set -euo pipefail
+          STAGE="${{ matrix.tool }}-x86_64-linux"
+          mkdir -p "$STAGE"
+          cp "tools/${{ matrix.tool }}/zig-out/bin/${{ matrix.tool }}" "$STAGE/${{ matrix.tool }}"
+          file "$STAGE/${{ matrix.tool }}" || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.tool }}-x86_64-linux
+          path: ${{ matrix.tool }}-x86_64-linux/**
+          if-no-files-found: error
+          retention-days: 14
+
+  build-macos:
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        tool: [raw-stack, af-log]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - uses: DeterminateSystems/nix-installer-action@v14
+        with:
+          extra-conf: |
+            experimental-features = nix-command flakes
+            extra-substituters = ${{ vars.ATTIC_SERVER || 'https://nix-cache.tinyland.dev' }}/${{ vars.ATTIC_CACHE || 'main' }}
+            extra-trusted-public-keys = ${{ secrets.ATTIC_PUBLIC_KEY }}
+      - name: zig build (${{ matrix.tool }}, aarch64-macos native)
+        working-directory: tools/${{ matrix.tool }}
+        run: |
+          nix shell nixpkgs#zig_0_14 --command \
+            zig build -Dtarget=aarch64-macos -Doptimize=ReleaseSafe
+      - name: stage artifact
+        run: |
+          set -euo pipefail
+          STAGE="${{ matrix.tool }}-aarch64-macos"
+          mkdir -p "$STAGE"
+          cp "tools/${{ matrix.tool }}/zig-out/bin/${{ matrix.tool }}" "$STAGE/${{ matrix.tool }}"
+          file "$STAGE/${{ matrix.tool }}" || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.tool }}-aarch64-macos
+          path: ${{ matrix.tool }}-aarch64-macos/**
+          if-no-files-found: error
+          retention-days: 14

@@ -1,48 +1,45 @@
 # af-log
 
-Host CLI for `AFLG` MLV blocks emitted by `modules/af_logger/` on
-magiclantern_hydrogen.
+Host-side Zig CLI for AFLG telemetry blocks emitted by the
+`aflogger` firmware module in `magiclantern_hydrogen`. Replays event
+timelines, summarises by event type, and detects common AF / lens
+intent patterns (focus-bracket, tracking-dwell, hunting).
 
-**Status**: scaffold + AFLG decoder + `replay` + `summary` subcommands.
-`detect` pattern classifier is the next slice.
-**Linear**: TIN-1230 (Sprint C4).
-
-## Build
-
-From the repo root, inside the dev shell:
+## Quick start
 
 ```
-direnv allow
+af-log replay  lens-test.mlv | less
+af-log summary lens-test.mlv
+af-log detect  lens-test.mlv
+```
+
+See [`USAGE.md`](USAGE.md) for the full subcommand reference.
+
+## Build from source
+
+```
 cd tools/af-log
-zig build
-./zig-out/bin/af-log replay path/to/capture.mlv
+zig build                                # native target, ReleaseSafe
+zig build test                           # unit tests
+zig build -Dtarget=x86_64-linux-musl     # static Linux binary
+zig build -Dtarget=aarch64-macos         # macOS Apple Silicon
 ```
 
-Or `zig build test`.
+Requires Zig 0.14.
 
-### macOS local-build caveat
+## Source layout
 
-See the matching note in `tools/raw-stack/README.md`. The nixpkgs-Darwin
-+ Zig + MacOSX 26.5 SDK combination produces libc linker errors at
-build time. Use Linux CI or a non-nix Zig install while this is open.
+| File | Purpose |
+|---|---|
+| `src/main.zig` | CLI entry + subcommand dispatch. |
+| `src/mlv.zig` | Shared MLV decoder (block headers, AFLG payload). |
+| `src/detect.zig` | Pattern classifiers (focus_bracket / tracking_dwell / hunting). |
 
-## Subcommands
+## Bundled in releases
 
-| Subcommand | Status | Purpose |
-|---|---|---|
-| `replay FILE.mlv` | **implemented** | Annotated event-by-event timeline |
-| `summary FILE.mlv` | **implemented** | Counts per event type |
-| `detect FILE.mlv` | stub | Focus-bracket / tracking / hunting pattern classifier |
+Every release tarball contains: `af-log` (executable), `README.md`
+(this file), `USAGE.md` (full reference), `LICENSE`.
 
-## Block format
+## License
 
-`AFLG` wire layout mirrors `mlv_aflg_hdr_t` in
-`modules/raw_video/mlv_rec/mlv.h`. The `fields_present` bitmap
-distinguishes platform-supported fields from absent ones (e.g. 5D3 has
-no `PROP_LENS_DYNAMIC_DATA`).
-
-## Pairs with
-
-- `modules/af_logger/` — firmware-side AFLG emitter (TIN-1228)
-- `docs/spec/robotic-optics-actuation-2026-05-16.md` — future-state
-  design that consumes AFLG timelines for stepper/servo control.
+GPL-2.0, inherited from the parent repo. See `LICENSE`.

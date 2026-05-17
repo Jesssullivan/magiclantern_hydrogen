@@ -1,0 +1,96 @@
+# Reusable: assemble release tarballs + body and publish via softprops.
+#
+# Called by release.yml (tag push) and nightly.yml (cron).
+
+name: _publish-release
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Tag to publish (e.g. v0.4.0 or nightly-20260517-f0b18be)."
+        required: true
+        type: string
+      prerelease:
+        description: "Mark the GitHub release as a prerelease."
+        required: false
+        type: boolean
+        default: false
+      kind:
+        description: "'semver' | 'nightly' — drives release-body banner."
+        required: false
+        type: string
+        default: "semver"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: DeterminateSystems/nix-installer-action@v14
+        with:
+          extra-conf: |
+            experimental-features = nix-command flakes
+            extra-substituters = ${{ vars.ATTIC_SERVER || 'https://nix-cache.tinyland.dev' }}/${{ vars.ATTIC_CACHE || 'main' }}
+            extra-trusted-public-keys = ${{ secrets.ATTIC_PUBLIC_KEY }}
+
+      - name: download firmware artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: firmware-*
+          path: .
+      - name: download tool artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '{raw-stack,af-log}-*'
+          path: .
+
+      - name: list downloaded artifacts
+        run: |
+          set -euo pipefail
+          ls -la
+          for d in firmware-* raw-stack-* af-log-*; do
+            [ -d "$d" ] || continue
+            echo "── $d ──"
+            ls -la "$d"
+          done
+
+      - name: compose firmware tarballs
+        env:
+          TAG: ${{ inputs.tag }}
+        run: bash scripts/compose-firmware-tarballs.sh
+
+      - name: compose tool tarballs
+        env:
+          TAG: ${{ inputs.tag }}
+        run: bash scripts/compose-tool-tarballs.sh
+
+      - name: render release body
+        env:
+          TAG: ${{ inputs.tag }}
+          KIND: ${{ inputs.kind }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          PREV_TAG=$(git describe --tags --abbrev=0 "${{ inputs.tag }}^" 2>/dev/null || \
+                     git describe --tags --abbrev=0 HEAD 2>/dev/null || echo "")
+          export PREV_TAG
+          nix develop --command bash scripts/render-release-body.sh
+          echo "── RELEASE_NOTES.md preview ──"
+          head -60 RELEASE_NOTES.md
+          echo "── (truncated)"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          name: ${{ inputs.tag }}
+          body_path: RELEASE_NOTES.md
+          files: |
+            release-artifacts/*.tar.gz
+            release-artifacts/*.sha256
+          draft: false
+          prerelease: ${{ inputs.prerelease }}

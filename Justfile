@@ -311,3 +311,59 @@ release VERSION:
     git commit -m "chore(release): {{VERSION}}"
     git tag -a "{{VERSION}}" -m "Release {{VERSION}}"
     git push --follow-tags
+
+# Trigger the nightly workflow now (instead of waiting for cron).
+nightly-trigger:
+    gh workflow run nightly.yml --ref dev
+    echo "Nightly triggered. Watch: just nightly-status"
+
+# Recent nightly workflow runs.
+nightly-status:
+    gh run list --workflow=nightly.yml --limit 5
+
+# Preview the rendered release body for TAG without publishing.
+#   Usage: just release-notes-preview v0.4.0
+release-notes-preview TAG:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export TAG="{{TAG}}"
+    export PREV_TAG="$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")"
+    export GITHUB_REPOSITORY="Jesssullivan/magiclantern_hydrogen"
+    export KIND="semver"
+    bash scripts/render-release-body.sh
+    echo "── preview ──"
+    cat RELEASE_NOTES.md
+
+# Cross-build a single tool for a given Zig target triple.
+#   Usage: just tools-build raw-stack x86_64-linux-musl
+#          just tools-build af-log   aarch64-macos
+tools-build TOOL TARGET:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd tools/{{TOOL}}
+    zig build -Dtarget={{TARGET}} -Doptimize=ReleaseSafe
+    ls -la zig-out/bin/
+
+# Run zig build test for every tool.
+tools-test:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for d in tools/raw-stack tools/af-log; do
+      [ -f "$d/build.zig" ] || continue
+      ( cd "$d" && zig build test --summary all )
+    done
+
+# Cross-build every tool for every shipped target.
+tools-build-all:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for tool in raw-stack af-log; do
+      for target in x86_64-linux-musl aarch64-macos; do
+        echo "── $tool / $target ──"
+        just tools-build "$tool" "$target"
+      done
+    done
+
+# Trigger the release workflow for an existing tag.
+release-dispatch TAG:
+    gh workflow run release.yml --ref dev -f tag={{TAG}}

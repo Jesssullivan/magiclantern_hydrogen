@@ -1,0 +1,62 @@
+# Reusable: build all in-scope firmware platforms.
+#
+# Called by release.yml (tag push) and nightly.yml (cron). Produces one
+# `firmware-<platform>` artifact per platform containing every file
+# downstream tarball composition might want (autoexec.bin, ML-SETUP.FIR,
+# modules/**/*.mo). The composer is responsible for picking the bits it
+# actually ships.
+
+name: _build-firmware
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Tag this build is associated with (informational)."
+        required: false
+        type: string
+        default: "untagged"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - 5D2.212
+          - 5D3.113
+          - 5D3.123
+          - 5D4.133
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - uses: DeterminateSystems/nix-installer-action@v14
+        with:
+          extra-conf: |
+            experimental-features = nix-command flakes
+            extra-substituters = ${{ vars.ATTIC_SERVER || 'https://nix-cache.tinyland.dev' }}/${{ vars.ATTIC_CACHE || 'main' }}
+            extra-trusted-public-keys = ${{ secrets.ATTIC_PUBLIC_KEY }}
+      - name: build firmware ${{ matrix.platform }} (tag ${{ inputs.tag }})
+        run: nix develop --command just build ${{ matrix.platform }}
+      - name: also build firmware modules
+        run: nix develop --command just build-modules || true
+      - name: stage firmware artifact tree
+        run: |
+          set -euo pipefail
+          STAGE="firmware-${{ matrix.platform }}"
+          mkdir -p "$STAGE/modules"
+          # Collect every file a tarball composer might want.
+          find "platform/${{ matrix.platform }}" -maxdepth 6 \
+            \( -name 'autoexec.bin' -o -name 'ML-SETUP.FIR' -o -name '*.fir' \) \
+            -exec cp {} "$STAGE/" \; 2>/dev/null || true
+          # Module .mo files live under modules/<mod>/<mod>.mo after a build.
+          find modules -maxdepth 3 -name '*.mo' -exec cp {} "$STAGE/modules/" \; 2>/dev/null || true
+          ls -la "$STAGE" "$STAGE/modules" || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ matrix.platform }}
+          path: firmware-${{ matrix.platform }}/**
+          if-no-files-found: warn
+          retention-days: 14

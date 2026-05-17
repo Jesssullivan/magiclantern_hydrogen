@@ -1,0 +1,90 @@
+# Nightly release workflow.
+#
+# Trigger: daily cron + manual workflow_dispatch. Same artifact shape as a
+# semver release, but tagged nightly-YYYYMMDD-<short-sha> and marked
+# prerelease. Skipped if no new commits on dev since the last nightly.
+#
+# Retention: last 7 nightlies kept (older auto-pruned at end of job).
+
+name: nightly
+
+on:
+  schedule:
+    - cron: "17 7 * * *"   # 07:17 UTC daily — out of the way of common cron
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  should-run:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.compute.outputs.tag }}
+      proceed: ${{ steps.compute.outputs.proceed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: compute
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          short=$(git rev-parse --short HEAD)
+          date=$(date -u +%Y%m%d)
+          tag="nightly-${date}-${short}"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+          # Skip if the previous nightly was built from the same commit.
+          last=$(gh release list --limit 50 --json tagName \
+                  --jq '[.[] | select(.tagName | startswith("nightly-"))][0].tagName' || echo "")
+          if [ -n "$last" ]; then
+            last_short="${last##*-}"
+            if [ "$last_short" = "$short" ]; then
+              echo "No new commits since $last (sha=$short); skipping."
+              echo "proceed=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo "proceed=true" >> "$GITHUB_OUTPUT"
+
+  firmware:
+    needs: should-run
+    if: needs.should-run.outputs.proceed == 'true'
+    uses: ./.github/workflows/_build-firmware.yml
+    with:
+      tag: ${{ needs.should-run.outputs.tag }}
+    secrets: inherit
+
+  tools:
+    needs: should-run
+    if: needs.should-run.outputs.proceed == 'true'
+    uses: ./.github/workflows/_build-tools.yml
+    with:
+      tag: ${{ needs.should-run.outputs.tag }}
+    secrets: inherit
+
+  publish:
+    needs: [should-run, firmware, tools]
+    if: needs.should-run.outputs.proceed == 'true'
+    uses: ./.github/workflows/_publish-release.yml
+    with:
+      tag: ${{ needs.should-run.outputs.tag }}
+      prerelease: true
+      kind: nightly
+    secrets: inherit
+
+  prune:
+    needs: [should-run, publish]
+    if: needs.should-run.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: prune old nightlies
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEEP: "7"
+        run: bash scripts/prune-nightlies.sh
