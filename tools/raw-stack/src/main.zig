@@ -30,6 +30,7 @@ const Subcommand = enum {
     fixture,
     frames,
     raw_stats,
+    info,
 };
 
 fn parseSubcommand(arg: []const u8) ?Subcommand {
@@ -47,6 +48,7 @@ fn parseSubcommand(arg: []const u8) ?Subcommand {
         .{ "fixture", .fixture },
         .{ "frames", .frames },
         .{ "raw-stats", .raw_stats },
+        .{ "info", .info },
     };
     inline for (map) |entry| {
         if (std.mem.eql(u8, arg, entry[0])) return entry[1];
@@ -120,7 +122,63 @@ pub fn main() !u8 {
         .fixture => return try runFixture(args[2..]),
         .frames => return try runFrames(allocator, args[2..]),
         .raw_stats => return try runRawStats(allocator, args[2..]),
+        .info => return try runInfo(allocator, args[2..]),
     }
+}
+
+fn runInfo(allocator: std.mem.Allocator, args: [][:0]u8) !u8 {
+    const stderr = std.io.getStdErr().writer();
+    if (args.len != 1) {
+        try stderr.print("raw-stack info: expected 1 argument (path to MLV file)\n", .{});
+        return 2;
+    }
+
+    var file = std.fs.cwd().openFile(args[0], .{}) catch |err| {
+        try stderr.print("raw-stack info: cannot open '{s}': {s}\n", .{ args[0], @errorName(err) });
+        return 1;
+    };
+    defer file.close();
+
+    var reader = mlv.Reader.init(allocator, file.reader().any());
+    defer reader.deinit();
+
+    const stdout = std.io.getStdOut().writer();
+    var rawi_found = false;
+    var rawi: mlv.Rawi = undefined;
+    var vidf_count: u64 = 0;
+    var rawx_count: u64 = 0;
+    var aflg_count: u64 = 0;
+
+    while (try reader.next()) |hdr| {
+        if (mlv.blockTypeEquals(hdr.block_type, "RAWI")) {
+            rawi = try reader.readRawi(hdr);
+            rawi_found = true;
+        } else if (mlv.blockTypeEquals(hdr.block_type, "VIDF")) {
+            vidf_count += 1;
+            try reader.skipBlockBody(hdr);
+        } else if (mlv.blockTypeEquals(hdr.block_type, "RAWX")) {
+            rawx_count += 1;
+            try reader.skipBlockBody(hdr);
+        } else if (mlv.blockTypeEquals(hdr.block_type, "AFLG")) {
+            aflg_count += 1;
+            try reader.skipBlockBody(hdr);
+        } else {
+            try reader.skipBlockBody(hdr);
+        }
+    }
+
+    if (rawi_found) {
+        try stdout.print(
+            "RAWI: {d}x{d} (logical {d}x{d}), {d}-bit, frame_size={d}, pitch={d}\n",
+            .{ rawi.width, rawi.height, rawi.x_res, rawi.y_res, rawi.bits_per_pixel, rawi.frame_size, rawi.pitch },
+        );
+    } else {
+        try stdout.print("RAWI: not present (no per-camera raw geometry)\n", .{});
+    }
+    try stdout.print("VIDF blocks: {d}\n", .{vidf_count});
+    try stdout.print("RAWX blocks: {d}\n", .{rawx_count});
+    try stdout.print("AFLG blocks: {d}\n", .{aflg_count});
+    return 0;
 }
 
 fn runRawStats(allocator: std.mem.Allocator, args: [][:0]u8) !u8 {

@@ -32,6 +32,22 @@ pub const Options = struct {
 pub fn writeFixture(writer: anytype, opts: Options) !void {
     var tick = opts.tick_start;
 
+    // Emit a RAWI block first (one-shot file header) when fixture
+    // includes any VIDF frames. Synthetic values match a 5D3-like
+    // raw mode: 14-bit, 1920x1080 logical resolution.
+    if (opts.vidf_frames > 0) {
+        try writeRawi(writer, .{
+            .timestamp = tick,
+            .x_res = 1920,
+            .y_res = 1080,
+            .width = 1920,
+            .height = 1080,
+            .pitch = 1920 * 14 / 8, // 14-bit packed
+            .frame_size = (1920 * 1080 * 14) / 8,
+            .bits_per_pixel = 14,
+        });
+    }
+
     var v: u32 = 0;
     while (v < opts.vidf_frames) : (v += 1) {
         try writeVidf(writer, .{
@@ -150,6 +166,42 @@ pub const RawxArgs = struct {
     fpn_table_ref: u32,
     exposure_ns: u64,
 };
+
+pub const RawiArgs = struct {
+    timestamp: u64,
+    x_res: u16,
+    y_res: u16,
+    width: i32,
+    height: i32,
+    pitch: i32,
+    frame_size: i32,
+    bits_per_pixel: i32,
+};
+
+fn writeRawi(writer: anytype, args: RawiArgs) !void {
+    // BlockHeader (16) + Rawi.DECODE_SIZE (32) = 48.
+    // Pad the rest of raw_info_t with zeros up to a typical struct
+    // size. Use 192 bytes total for raw_info_t — covers the remaining
+    // unions in raw.h's raw_info_t comfortably.
+    const rawi_total_size: u32 = @intCast(mlv.BLOCK_HEADER_SIZE + mlv.Rawi.DECODE_SIZE + 160);
+    try writer.writeAll("RAWI");
+    try writer.writeInt(u32, rawi_total_size, .little);
+    try writer.writeInt(u64, args.timestamp, .little);
+
+    try writer.writeInt(u16, args.x_res, .little);
+    try writer.writeInt(u16, args.y_res, .little);
+    try writer.writeInt(u32, 0, .little); // api_version
+    try writer.writeInt(u32, 0, .little); // do_not_use_this (was buffer pointer)
+    try writer.writeInt(i32, args.height, .little);
+    try writer.writeInt(i32, args.width, .little);
+    try writer.writeInt(i32, args.pitch, .little);
+    try writer.writeInt(i32, args.frame_size, .little);
+    try writer.writeInt(i32, args.bits_per_pixel, .little);
+
+    // Trailing raw_info_t padding (160 zero bytes).
+    var z: [256]u8 = [_]u8{0} ** 256;
+    try writer.writeAll(z[0..160]);
+}
 
 pub const VidfArgs = struct {
     timestamp: u64,

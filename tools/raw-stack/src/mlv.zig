@@ -66,6 +66,27 @@ pub const Rawx = struct {
 };
 
 /// AFLG block payload (mlv_aflg_hdr_t).
+/// RAWI block — partial decoder. mlv_rawi_hdr_t embeds raw_info_t
+/// which is ~200 bytes of camera-specific state. We only decode the
+/// front-of-struct fields needed for downstream pixel decoding:
+/// xRes/yRes (from RAWI itself) + width/height/pitch/bits_per_pixel
+/// (from the embedded raw_info_t). Trailing raw_info content is
+/// skipped per blockSize.
+pub const Rawi = struct {
+    x_res: u16,
+    y_res: u16,
+    api_version: u32,
+    height: i32,
+    width: i32,
+    pitch: i32,
+    frame_size: i32,
+    bits_per_pixel: i32,
+
+    /// Bytes we actually decode after the 16-byte BlockHeader.
+    /// 2 + 2 + 4 + 4 + 4 + 4 + 4 + 4 + 4 = 32
+    pub const DECODE_SIZE: usize = 32;
+};
+
 /// VIDF block header (per `mlv_vidf_hdr_t` in mlv_rec/mlv.h). VIDF
 /// carries raw frame payload after the header + an optional frame-space
 /// padding region used to align the pixel data. We decode the header
@@ -220,6 +241,37 @@ pub const Reader = struct {
             .dpc_table_ref = std.mem.readInt(u32, buf[24..28], .little),
             .fpn_table_ref = std.mem.readInt(u32, buf[28..32], .little),
             .exposure_ns = std.mem.readInt(u64, buf[32..40], .little),
+        };
+    }
+
+    pub fn readRawi(self: *Reader, hdr: BlockHeader) !Rawi {
+        const remaining = @as(usize, hdr.block_size) -| BLOCK_HEADER_SIZE;
+        if (remaining < Rawi.DECODE_SIZE) return error.TruncatedRawi;
+
+        var buf: [Rawi.DECODE_SIZE]u8 = undefined;
+        const n = try self.underlying.readAll(&buf);
+        if (n < Rawi.DECODE_SIZE) return error.UnexpectedEof;
+
+        // Skip the rest of raw_info_t.
+        var skipped: usize = Rawi.DECODE_SIZE;
+        var sink: [4096]u8 = undefined;
+        while (skipped < remaining) {
+            const want = @min(sink.len, remaining - skipped);
+            const got = try self.underlying.readAll(sink[0..want]);
+            if (got == 0) return error.UnexpectedEof;
+            skipped += got;
+        }
+
+        return .{
+            .x_res = std.mem.readInt(u16, buf[0..2], .little),
+            .y_res = std.mem.readInt(u16, buf[2..4], .little),
+            .api_version = std.mem.readInt(u32, buf[4..8], .little),
+            // skip do_not_use_this (4 bytes, was raw_info.buffer pointer)
+            .height = std.mem.readInt(i32, buf[12..16], .little),
+            .width = std.mem.readInt(i32, buf[16..20], .little),
+            .pitch = std.mem.readInt(i32, buf[20..24], .little),
+            .frame_size = std.mem.readInt(i32, buf[24..28], .little),
+            .bits_per_pixel = std.mem.readInt(i32, buf[28..32], .little),
         };
     }
 

@@ -67,6 +67,18 @@ if ! echo "$SUMMARY_OUT" | grep -q "6 AFLG blocks total"; then
   exit 1
 fi
 
+echo "==> raw-stack info on fixture:"
+INFO_OUT="$("$RAW_STACK" info "$FIXTURE")"
+echo "$INFO_OUT"
+if ! echo "$INFO_OUT" | grep -q "RAWI: 1920x1080"; then
+  echo "FAIL: expected RAWI: 1920x1080 in info output" >&2
+  exit 1
+fi
+if ! echo "$INFO_OUT" | grep -q "14-bit"; then
+  echo "FAIL: expected 14-bit in info output" >&2
+  exit 1
+fi
+
 echo "==> raw-stack frames on fixture:"
 FRAMES_OUT="$("$RAW_STACK" frames "$FIXTURE")"
 echo "$FRAMES_OUT"
