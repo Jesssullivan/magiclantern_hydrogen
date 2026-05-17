@@ -7,6 +7,84 @@ This fork descends from `reticulatedpines/magiclantern_simplified`; commits
 prior to v0.1.0 are inherited from upstream and not enumerated here. See
 that repo's history for upstream Magic Lantern development.
 
+## [0.4.0] - 2026-05-17
+
+SOTA release pipeline. Two stage-name fronts:
+
+1. **User-facing**: every release (semver tag-driven OR nightly cron-driven)
+   now ships a per-camera firmware tarball **and** per-OS-arch host-tool
+   tarballs, each with `.sha256` sidecars, embedded `INSTALL.md` /
+   `USAGE.md` / per-platform notes, and a richly-templated release body
+   with one-liner install snippets for every artifact.
+2. **Operator-facing**: reusable GitHub Actions workflows
+   (`_build-firmware.yml`, `_build-tools.yml`, `_publish-release.yml`)
+   shared by both `release.yml` (tag push) and `nightly.yml` (07:17 UTC
+   cron + workflow_dispatch). Nightlies tagged `nightly-YYYYMMDD-<sha>`;
+   last 7 retained, older auto-pruned. Skipped when `dev` HEAD has not
+   moved since the previous nightly.
+
+v0.4.0 also bundles the v0.3.0 work that never got tagged on its own —
+`raw-stack dark-subtract` + `raw-stack sigma-stack` — into a single
+shipped release.
+
+### Added — release pipeline
+
+- `.github/workflows/_build-firmware.yml` — reusable matrix (4 in-scope
+  platforms) producing per-platform artifact bundles with autoexec.bin,
+  ML-SETUP.FIR, modules/*.mo.
+- `.github/workflows/_build-tools.yml` — reusable matrix
+  `raw-stack × af-log × {x86_64-linux-musl static, aarch64-macos
+  native}`. macOS aarch64 builds on `macos-14` runner.
+- `.github/workflows/_publish-release.yml` — downloads firmware + tool
+  artifacts, runs the compose scripts, renders the release body, calls
+  `softprops/action-gh-release@v2`.
+- `.github/workflows/nightly.yml` — cron + dispatch; should-run gate
+  skips when `dev` SHA matches the previous nightly's; prunes older
+  releases keeping last 7.
+- `scripts/compose-firmware-tarballs.sh` —
+  `magiclantern-hydrogen-<TAG>-<P>.tar.gz` with autoexec.bin, ML-SETUP.FIR,
+  modules/, MODULES.txt, INSTALL.md, README.md (+ .sha256 sidecar).
+- `scripts/compose-tool-tarballs.sh` — `<tool>-<TAG>-<os-arch>.tar.gz`
+  with the executable + README.md + USAGE.md + LICENSE (+ .sha256).
+- `scripts/render-release-body.sh` — assembles RELEASE_NOTES.md with a
+  KIND banner (`semver` vs `nightly`), per-camera install table +
+  curl-and-extract snippet, per-tool table + verify snippet, and the
+  cliff-rendered changelog appended.
+- `scripts/prune-nightlies.sh` — keeps the newest N (`KEEP=7`)
+  `nightly-*` GH releases; deletes older + their git tags.
+
+### Added — raw-stack subcommands (carries forward from v0.3.0)
+
+- `dark-subtract DARK IN.mlv [IN2.mlv ...] OUT[.fits|.bin]` — subtract a
+  master dark frame from every VIDF pixel, then per-pixel-mean across
+  all frames. Reports low / high clip counts.
+- `sigma-stack [--sigma N] [--iters N] IN.mlv [...] OUT[.fits|.bin]` —
+  iterative sigma-clipped mean stacker. Defaults sigma=3.0, iters=2.
+  Reports kept / total sample counts.
+
+### Documentation
+
+- `README.md` rewritten as a fork-specific entry doc (status badges,
+  supported platforms, install / host-tools / build-from-source /
+  releases / hack-on-it sections). Upstream blurb preserved at
+  `README.upstream.md`.
+- `docs/INSTALL.md` — exhaustive install / update / recovery /
+  uninstall / troubleshooting guide; embedded in every firmware tarball.
+- `docs/USAGE.md` — host-tool reference covering every `raw-stack` and
+  `af-log` subcommand; embedded in every tool tarball.
+- `docs/platform-notes/{5D2.212,5D3.113,5D3.123,5D4.133}.md` —
+  per-camera notes embedded as `README.md` inside each platform tarball.
+- `tools/raw-stack/{README,USAGE}.md` and `tools/af-log/{README,USAGE}.md`
+  upgraded from short stubs to bundle-ready references.
+
+### Build / CI
+
+- `Justfile`: `tools-build TOOL TARGET`, `tools-test`,
+  `tools-build-all`, `nightly-trigger`, `nightly-status`,
+  `release-notes-preview TAG`, `release-dispatch TAG`.
+- `cliff.toml`: body template now renders a **Full diff:** compare link
+  when both versions are available.
+
 ## [0.3.0] - 2026-05-17
 
 Outlier-rejection + calibration stacking primitives. Builds on the v0.2.0
