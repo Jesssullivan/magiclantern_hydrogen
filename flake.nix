@@ -32,7 +32,11 @@
       # Zig from nixpkgs-unstable (binary release). Track whatever
       # version unstable ships; if we need to pin, switch to a
       # specific zig-overlay binary tag.
-      zig = pkgsZig.zig;
+      # IMPORTANT: pin to zig_0_14 — nixpkgs-unstable.zig drifts to latest
+      # stable Zig (0.15+), which has incompatible build.zig API
+      # (ExecutableOptions.root_source_file removed). Host tools + new
+      # firmware modules target Zig 0.14.x.
+      zig = pkgsZig.zig_0_14;
 
       # arm-none-eabi cross toolchain for firmware.
       armEmbedded = pkgs.gcc-arm-embedded;
