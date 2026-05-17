@@ -37,6 +37,7 @@ const Subcommand = enum {
     pixel_stats,
     mean_frame,
     bayer_stats,
+    median_frame,
 };
 
 fn parseSubcommand(arg: []const u8) ?Subcommand {
@@ -58,6 +59,7 @@ fn parseSubcommand(arg: []const u8) ?Subcommand {
         .{ "pixel-stats", .pixel_stats },
         .{ "mean-frame", .mean_frame },
         .{ "bayer-stats", .bayer_stats },
+        .{ "median-frame", .median_frame },
     };
     inline for (map) |entry| {
         if (std.mem.eql(u8, arg, entry[0])) return entry[1];
@@ -135,7 +137,145 @@ pub fn main() !u8 {
         .pixel_stats => return try runPixelStats(allocator, args[2..]),
         .mean_frame => return try runMeanFrame(allocator, args[2..]),
         .bayer_stats => return try runBayerStats(allocator, args[2..]),
+        .median_frame => return try runMedianFrame(allocator, args[2..]),
     }
+}
+
+/// median-frame INPUT.mlv [INPUT2.mlv ...] OUT
+/// Per-pixel median across every decoded VIDF frame. More robust than
+/// `mean-frame` against outliers (cosmic rays, hot pixels firing in
+/// just one exposure). Output format inferred from extension same as
+/// mean-frame.
+fn runMedianFrame(allocator: std.mem.Allocator, args: [][:0]u8) !u8 {
+    const stderr = std.io.getStdErr().writer();
+    if (args.len < 2) {
+        try stderr.print("raw-stack median-frame: expected INPUT.mlv [INPUT2.mlv ...] OUT\n", .{});
+        return 2;
+    }
+    const out_path = args[args.len - 1];
+    const inputs = args[0 .. args.len - 1];
+
+    var dims: ?struct { w: i32, h: i32 } = null;
+
+    // samples[pixel_idx] = list of values across frames.
+    var samples = std.ArrayList(std.ArrayList(u16)).init(allocator);
+    defer {
+        for (samples.items) |*s| s.deinit();
+        samples.deinit();
+    }
+    var samples_initialized = false;
+
+    for (inputs) |in_path| {
+        var file = std.fs.cwd().openFile(in_path, .{}) catch |err| {
+            try stderr.print("raw-stack median-frame: cannot open '{s}': {s}\n", .{ in_path, @errorName(err) });
+            return 1;
+        };
+        defer file.close();
+
+        var reader = mlv.Reader.init(allocator, file.reader().any());
+        defer reader.deinit();
+
+        while (try reader.next()) |hdr| {
+            if (mlv.blockTypeEquals(hdr.block_type, "RAWI")) {
+                const r = try reader.readRawi(hdr);
+                if (r.bits_per_pixel != 14) {
+                    try stderr.print(
+                        "raw-stack median-frame: '{s}' bits_per_pixel={d}; only 14 supported\n",
+                        .{ in_path, r.bits_per_pixel },
+                    );
+                    return 1;
+                }
+                if (dims) |d| {
+                    if (d.w != r.width or d.h != r.height) {
+                        try stderr.print(
+                            "raw-stack median-frame: dimension mismatch '{s}' {d}x{d} vs {d}x{d}\n",
+                            .{ in_path, r.width, r.height, d.w, d.h },
+                        );
+                        return 1;
+                    }
+                } else dims = .{ .w = r.width, .h = r.height };
+            } else if (mlv.blockTypeEquals(hdr.block_type, "VIDF")) {
+                const r = try reader.readVidfWithPayload(hdr);
+                defer allocator.free(r.payload);
+                if (r.payload.len == 0 or r.payload.len % pixels_mod.BYTES_PER_BLOCK != 0) continue;
+
+                const px = try pixels_mod.unpackBuffer(allocator, r.payload);
+                defer allocator.free(px);
+
+                if (!samples_initialized) {
+                    try samples.ensureTotalCapacity(px.len);
+                    var i: usize = 0;
+                    while (i < px.len) : (i += 1) {
+                        try samples.append(std.ArrayList(u16).init(allocator));
+                    }
+                    samples_initialized = true;
+                } else if (samples.items.len != px.len) {
+                    try stderr.print(
+                        "raw-stack median-frame: VIDF pixel count varies ({d} vs {d})\n",
+                        .{ px.len, samples.items.len },
+                    );
+                    return 1;
+                }
+
+                for (px, 0..) |p, i| try samples.items[i].append(p);
+            } else {
+                try reader.skipBlockBody(hdr);
+            }
+        }
+    }
+
+    if (!samples_initialized or samples.items.len == 0) {
+        try stderr.print("raw-stack median-frame: no VIDF samples decoded\n", .{});
+        return 1;
+    }
+
+    // Compute per-pixel median (sort + middle).
+    const out_pixels = try allocator.alloc(u16, samples.items.len);
+    defer allocator.free(out_pixels);
+    var total_frames: u64 = 0;
+    for (samples.items, 0..) |*s, i| {
+        std.mem.sort(u16, s.items, {}, std.sort.asc(u16));
+        const n = s.items.len;
+        if (n == 0) {
+            out_pixels[i] = 0;
+            continue;
+        }
+        out_pixels[i] = if (n % 2 == 1)
+            s.items[n / 2]
+        else
+            @intCast((@as(u32, s.items[n / 2 - 1]) + @as(u32, s.items[n / 2])) / 2);
+        if (i == 0) total_frames = n;
+    }
+
+    var out_file = try std.fs.cwd().createFile(out_path, .{ .truncate = true });
+    defer out_file.close();
+    var w = out_file.writer();
+    const is_fits = std.mem.endsWith(u8, out_path, ".fits") or std.mem.endsWith(u8, out_path, ".fit");
+
+    if (is_fits) {
+        if (dims == null) {
+            try stderr.print("raw-stack median-frame: FITS output requires RAWI dimensions\n", .{});
+            return 1;
+        }
+        const want = @as(usize, @intCast(dims.?.w)) * @as(usize, @intCast(dims.?.h));
+        const fw: i32 = if (want == out_pixels.len) dims.?.w else @as(i32, @intCast(out_pixels.len));
+        const fh: i32 = if (want == out_pixels.len) dims.?.h else 1;
+        try fits.writeImage(w, out_pixels, .{
+            .width = fw,
+            .height = fh,
+            .object = "median stack",
+            .comments = &[_][]const u8{"Generated by raw-stack median-frame."},
+        });
+    } else {
+        for (out_pixels) |p| try w.writeInt(u16, p, .little);
+    }
+
+    const stdout = std.io.getStdOut().writer();
+    try stdout.print(
+        "raw-stack median-frame: stacked {d} samples-per-pixel across {d} pixels @ {s}\n",
+        .{ total_frames, out_pixels.len, out_path },
+    );
+    return 0;
 }
 
 /// Per-VIDF + aggregate RGGB plane statistics.

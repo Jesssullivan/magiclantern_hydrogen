@@ -132,6 +132,20 @@ if ! /usr/bin/head -c 9 "$FITS_OUT" | grep -q "SIMPLE  ="; then
   exit 1
 fi
 
+echo "==> raw-stack median-frame on fixture:"
+MEDIAN_OUT="$WORKDIR/median.bin"
+MEDIAN_LOG="$("$RAW_STACK" median-frame "$FIXTURE" "$MEDIAN_OUT")"
+echo "$MEDIAN_LOG"
+if ! echo "$MEDIAN_LOG" | grep -qE "stacked 4 samples-per-pixel across 64 pixels"; then
+  echo "FAIL: expected '4 samples-per-pixel across 64 pixels' in median-frame output" >&2
+  exit 1
+fi
+median_size=$(/usr/bin/stat -c %s "$MEDIAN_OUT" 2>/dev/null || /usr/bin/stat -f %z "$MEDIAN_OUT")
+if [[ "$median_size" -ne 128 ]]; then
+  echo "FAIL: expected median-frame raw output to be 128 bytes, got $median_size" >&2
+  exit 1
+fi
+
 echo "==> raw-stack bayer-stats on fixture:"
 BAYER_OUT="$("$RAW_STACK" bayer-stats "$FIXTURE")"
 echo "$BAYER_OUT"
