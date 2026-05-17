@@ -101,6 +101,23 @@ if ! echo "$RAWSTATS_OUT" | grep -qE "448 total payload bytes"; then
   exit 1
 fi
 
+echo "==> raw-stack mean-frame on fixture:"
+MEAN_OUT="$WORKDIR/mean.bin"
+MEAN_LOG="$("$RAW_STACK" mean-frame "$FIXTURE" "$MEAN_OUT")"
+echo "$MEAN_LOG"
+if ! echo "$MEAN_LOG" | grep -qE "stacked 4 VIDF frames -> 64 pixels"; then
+  echo "FAIL: expected 'stacked 4 VIDF frames -> 64 pixels' in mean-frame output" >&2
+  exit 1
+fi
+# Fixture writes 4 frames of 112 bytes each, payload byte = (frame_number + i) mod 256.
+# After 14-bit unpack each frame is 64 pixels. Mean over 4 frames is well-defined.
+# Output should be 64 pixels * 2 bytes = 128 bytes.
+mean_size=$(/usr/bin/stat -c %s "$MEAN_OUT" 2>/dev/null || /usr/bin/stat -f %z "$MEAN_OUT")
+if [[ "$mean_size" -ne 128 ]]; then
+  echo "FAIL: expected mean-frame output to be 128 bytes (64 pixels * 2), got $mean_size" >&2
+  exit 1
+fi
+
 echo "==> raw-stack pixel-stats on fixture:"
 PIXSTATS_OUT="$("$RAW_STACK" pixel-stats "$FIXTURE")"
 echo "$PIXSTATS_OUT"

@@ -33,6 +33,7 @@ const Subcommand = enum {
     raw_stats,
     info,
     pixel_stats,
+    mean_frame,
 };
 
 fn parseSubcommand(arg: []const u8) ?Subcommand {
@@ -52,6 +53,7 @@ fn parseSubcommand(arg: []const u8) ?Subcommand {
         .{ "raw-stats", .raw_stats },
         .{ "info", .info },
         .{ "pixel-stats", .pixel_stats },
+        .{ "mean-frame", .mean_frame },
     };
     inline for (map) |entry| {
         if (std.mem.eql(u8, arg, entry[0])) return entry[1];
@@ -127,7 +129,123 @@ pub fn main() !u8 {
         .raw_stats => return try runRawStats(allocator, args[2..]),
         .info => return try runInfo(allocator, args[2..]),
         .pixel_stats => return try runPixelStats(allocator, args[2..]),
+        .mean_frame => return try runMeanFrame(allocator, args[2..]),
     }
+}
+
+/// mean-frame INPUT.mlv [INPUT2.mlv ...] OUT.bin
+/// Iterates VIDF blocks from every input MLV, unpacks 14-bit pixels,
+/// computes per-pixel running mean (Welford's method, integer rounded),
+/// writes the result as row-major u16 little-endian binary to OUT.bin.
+///
+/// All inputs must agree on RAWI width/height. The output is the
+/// foundation for real-frame stacking; FITS / DNG writers are
+/// follow-up work (TIN-1223).
+fn runMeanFrame(allocator: std.mem.Allocator, args: [][:0]u8) !u8 {
+    const stderr = std.io.getStdErr().writer();
+    if (args.len < 2) {
+        try stderr.print("raw-stack mean-frame: expected INPUT.mlv [INPUT2.mlv ...] OUT.bin\n", .{});
+        return 2;
+    }
+    const out_path = args[args.len - 1];
+    const inputs = args[0 .. args.len - 1];
+
+    var dims: ?struct { w: i32, h: i32 } = null;
+    var running_sum: ?[]u64 = null;
+    var sample_count: u64 = 0;
+    defer if (running_sum) |s| allocator.free(s);
+
+    for (inputs) |in_path| {
+        var file = std.fs.cwd().openFile(in_path, .{}) catch |err| {
+            try stderr.print("raw-stack mean-frame: cannot open '{s}': {s}\n", .{ in_path, @errorName(err) });
+            return 1;
+        };
+        defer file.close();
+
+        var reader = mlv.Reader.init(allocator, file.reader().any());
+        defer reader.deinit();
+
+        while (try reader.next()) |hdr| {
+            if (mlv.blockTypeEquals(hdr.block_type, "RAWI")) {
+                const r = try reader.readRawi(hdr);
+                if (r.bits_per_pixel != 14) {
+                    try stderr.print(
+                        "raw-stack mean-frame: '{s}' bits_per_pixel={d}; only 14 supported\n",
+                        .{ in_path, r.bits_per_pixel },
+                    );
+                    return 1;
+                }
+                if (dims) |d| {
+                    if (d.w != r.width or d.h != r.height) {
+                        try stderr.print(
+                            "raw-stack mean-frame: dimension mismatch '{s}' {d}x{d} vs {d}x{d}\n",
+                            .{ in_path, r.width, r.height, d.w, d.h },
+                        );
+                        return 1;
+                    }
+                } else {
+                    dims = .{ .w = r.width, .h = r.height };
+                }
+            } else if (mlv.blockTypeEquals(hdr.block_type, "VIDF")) {
+                const r = try reader.readVidfWithPayload(hdr);
+                defer allocator.free(r.payload);
+
+                if (r.payload.len == 0) continue;
+                if (r.payload.len % pixels_mod.BYTES_PER_BLOCK != 0) continue;
+
+                const px = try pixels_mod.unpackBuffer(allocator, r.payload);
+                defer allocator.free(px);
+
+                if (running_sum == null) {
+                    running_sum = try allocator.alloc(u64, px.len);
+                    for (running_sum.?) |*s| s.* = 0;
+                } else if (running_sum.?.len != px.len) {
+                    try stderr.print(
+                        "raw-stack mean-frame: VIDF pixel count varies between frames ({d} vs {d})\n",
+                        .{ px.len, running_sum.?.len },
+                    );
+                    return 1;
+                }
+
+                for (px, running_sum.?) |p, *s| s.* += p;
+                sample_count += 1;
+            } else {
+                try reader.skipBlockBody(hdr);
+            }
+        }
+    }
+
+    if (running_sum == null or sample_count == 0) {
+        try stderr.print("raw-stack mean-frame: no VIDF samples decoded\n", .{});
+        return 1;
+    }
+
+    // Compute per-pixel mean (integer-rounded).
+    const out_pixels = try allocator.alloc(u16, running_sum.?.len);
+    defer allocator.free(out_pixels);
+    for (running_sum.?, out_pixels) |s, *o| {
+        const m = s / sample_count;
+        o.* = @intCast(@min(m, @as(u64, pixels_mod.MAX_PIXEL_VALUE)));
+    }
+
+    // Write u16 LE row-major to OUT.bin.
+    var out_file = try std.fs.cwd().createFile(out_path, .{ .truncate = true });
+    defer out_file.close();
+    var w = out_file.writer();
+    for (out_pixels) |p| try w.writeInt(u16, p, .little);
+
+    const stdout = std.io.getStdOut().writer();
+    try stdout.print(
+        "raw-stack mean-frame: stacked {d} VIDF frames -> {d} pixels @ {s}\n",
+        .{ sample_count, out_pixels.len, out_path },
+    );
+    if (dims) |d| {
+        try stdout.print(
+            "  (raw geometry from RAWI: {d}x{d}; output is row-major u16 LE)\n",
+            .{ d.w, d.h },
+        );
+    }
+    return 0;
 }
 
 fn runPixelStats(allocator: std.mem.Allocator, args: [][:0]u8) !u8 {
