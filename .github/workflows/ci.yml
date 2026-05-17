@@ -136,12 +136,31 @@ jobs:
             experimental-features = nix-command flakes
             extra-substituters = ${{ vars.ATTIC_SERVER || 'https://nix-cache.tinyland.dev' }}/${{ vars.ATTIC_CACHE || 'main' }}
             extra-trusted-public-keys = ${{ secrets.ATTIC_PUBLIC_KEY }}
+      - name: cache attachment contract (advisory)
+        # Status check only — exits 0 even in compatibility-local-only mode.
+        # When ATTIC + BAZEL_REMOTE_CACHE secrets are wired, flip --strict
+        # on to make missing cache a hard fail (see TIN-1268).
+        run: nix develop --command bash scripts/cache-attachment-contract.sh
       - name: bazel build tools (linux_x86_64)
+        # Route through scripts/bazel-cache-backed.sh when a remote cache is
+        # configured (cache-backed contract), else fall back to plain
+        # bazelisk (compatibility-local-only). Phase 1 of the Flywheel
+        # cache-substrate adoption — see TIN-1268.
         run: |
-          nix develop --command \
-            bazelisk build //tools/raw-stack:raw-stack-linux-x86_64 //tools/af-log:af-log-linux-x86_64
+          if [ -n "${BAZEL_REMOTE_CACHE:-}" ]; then
+            nix develop --command bash scripts/bazel-cache-backed.sh build \
+              //tools/raw-stack:raw-stack-linux-x86_64 //tools/af-log:af-log-linux-x86_64
+          else
+            nix develop --command bazelisk build \
+              //tools/raw-stack:raw-stack-linux-x86_64 //tools/af-log:af-log-linux-x86_64
+          fi
       - name: bazel test tools (zig build test under sh_test)
-        run: nix develop --command bazelisk test //tools/...
+        run: |
+          if [ -n "${BAZEL_REMOTE_CACHE:-}" ]; then
+            nix develop --command bash scripts/bazel-cache-backed.sh test //tools/...
+          else
+            nix develop --command bazelisk test //tools/...
+          fi
       - name: verify Bazel output binaries exist
         run: |
           ls -la bazel-bin/tools/raw-stack/ bazel-bin/tools/af-log/

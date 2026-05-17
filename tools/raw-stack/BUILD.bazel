@@ -30,6 +30,7 @@ genrule(
     srcs = [":srcs"],
     outs = ["raw-stack-native-bin"],
     cmd = """
+        export ZIG_GLOBAL_CACHE_DIR="$$PWD/.zig-cache-global" && mkdir -p "$$ZIG_GLOBAL_CACHE_DIR"
         ( cd tools/raw-stack && zig build -Doptimize=ReleaseSafe )
         cp tools/raw-stack/zig-out/bin/raw-stack $@
     """,
@@ -41,6 +42,7 @@ genrule(
     srcs = [":srcs"],
     outs = ["raw-stack-linux-x86_64-bin"],
     cmd = """
+        export ZIG_GLOBAL_CACHE_DIR="$$PWD/.zig-cache-global" && mkdir -p "$$ZIG_GLOBAL_CACHE_DIR"
         ( cd tools/raw-stack && zig build -Dtarget=x86_64-linux-musl -Doptimize=ReleaseSafe )
         cp tools/raw-stack/zig-out/bin/raw-stack $@
     """,
@@ -52,6 +54,7 @@ genrule(
     srcs = [":srcs"],
     outs = ["raw-stack-macos-aarch64-bin"],
     cmd = """
+        export ZIG_GLOBAL_CACHE_DIR="$$PWD/.zig-cache-global" && mkdir -p "$$ZIG_GLOBAL_CACHE_DIR"
         ( cd tools/raw-stack && zig build -Dtarget=aarch64-macos -Doptimize=ReleaseSafe )
         cp tools/raw-stack/zig-out/bin/raw-stack $@
     """,

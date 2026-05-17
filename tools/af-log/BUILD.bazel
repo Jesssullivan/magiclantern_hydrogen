@@ -13,6 +13,7 @@ genrule(
     srcs = [":srcs"],
     outs = ["af-log-native-bin"],
     cmd = """
+        export ZIG_GLOBAL_CACHE_DIR="$$PWD/.zig-cache-global" && mkdir -p "$$ZIG_GLOBAL_CACHE_DIR"
         ( cd tools/af-log && zig build -Doptimize=ReleaseSafe )
         cp tools/af-log/zig-out/bin/af-log $@
     """,
@@ -24,6 +25,7 @@ genrule(
     srcs = [":srcs"],
     outs = ["af-log-linux-x86_64-bin"],
     cmd = """
+        export ZIG_GLOBAL_CACHE_DIR="$$PWD/.zig-cache-global" && mkdir -p "$$ZIG_GLOBAL_CACHE_DIR"
         ( cd tools/af-log && zig build -Dtarget=x86_64-linux-musl -Doptimize=ReleaseSafe )
         cp tools/af-log/zig-out/bin/af-log $@
     """,
@@ -35,6 +37,7 @@ genrule(
     srcs = [":srcs"],
     outs = ["af-log-macos-aarch64-bin"],
     cmd = """
+        export ZIG_GLOBAL_CACHE_DIR="$$PWD/.zig-cache-global" && mkdir -p "$$ZIG_GLOBAL_CACHE_DIR"
         ( cd tools/af-log && zig build -Dtarget=aarch64-macos -Doptimize=ReleaseSafe )
         cp tools/af-log/zig-out/bin/af-log $@
     """,

@@ -110,6 +110,7 @@ result-*
 # Zig
 zig-out/
 .zig-cache/
+.zig-cache-global/
 
 # direnv local overrides
 .envrc.local
