@@ -48,7 +48,11 @@ for T in "${TOOLS[@]}"; do
     # Per-tool docs ship from the source tree (canonical), not from CI.
     if [ -f "tools/${T}/README.md" ]; then cp "tools/${T}/README.md" "$STAGE/"; fi
     if [ -f "tools/${T}/USAGE.md" ];  then cp "tools/${T}/USAGE.md"  "$STAGE/"; fi
-    if [ -f LICENSE ]; then cp LICENSE "$STAGE/"; fi
+    # Inherit GPLv2 from upstream Magic Lantern (file is COPYING here,
+    # rename to LICENSE inside the tarball for consumer conventions).
+    if   [ -f LICENSE ]; then cp LICENSE "$STAGE/LICENSE";
+    elif [ -f COPYING ]; then cp COPYING "$STAGE/LICENSE";
+    fi
 
     tar czf "release-artifacts/${STAGE}.tar.gz" "$STAGE"
     ( cd release-artifacts && shasum -a 256 "${STAGE}.tar.gz" > "${STAGE}.tar.gz.sha256" )
