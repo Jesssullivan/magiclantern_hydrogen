@@ -334,35 +334,44 @@ release-notes-preview TAG:
     echo "── preview ──"
     cat RELEASE_NOTES.md
 
-# Cross-build a single tool for a given Zig target triple.
-#   Usage: just tools-build raw-stack x86_64-linux-musl
-#          just tools-build af-log   aarch64-macos
+# Cross-build a single tool for a given target nick.
+#   Usage: just tools-build raw-stack linux-x86_64
+#          just tools-build af-log   macos-aarch64
+#          just tools-build raw-stack native
+# Goes through Bazel (//tools/<TOOL>:<TOOL>-<TARGET>) so the action cache
+# kicks in and the Flywheel attic / RBE story applies. Bazel orchestrates;
+# zig build does the actual compilation under nix develop.
 tools-build TOOL TARGET:
     #!/usr/bin/env bash
     set -euo pipefail
-    cd tools/{{TOOL}}
-    zig build -Dtarget={{TARGET}} -Doptimize=ReleaseSafe
-    ls -la zig-out/bin/
+    bazelisk build //tools/{{TOOL}}:{{TOOL}}-{{TARGET}}
+    ls -la bazel-bin/tools/{{TOOL}}/
 
-# Run zig build test for every tool.
+# Run unit tests via Bazel for every tool. Each sh_test shells out to
+# `zig build test --summary all`.
 tools-test:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    for d in tools/raw-stack tools/af-log; do
-      [ -f "$d/build.zig" ] || continue
-      ( cd "$d" && zig build test --summary all )
-    done
+    bazelisk test //tools/...
 
 # Cross-build every tool for every shipped target.
 tools-build-all:
     #!/usr/bin/env bash
     set -euo pipefail
     for tool in raw-stack af-log; do
-      for target in x86_64-linux-musl aarch64-macos; do
+      for target in linux-x86_64 macos-aarch64; do
         echo "── $tool / $target ──"
         just tools-build "$tool" "$target"
       done
     done
+
+# Direct zig-build path (no Bazel) — useful when iterating locally and
+# you want fast incremental builds without the Bazel sandbox overhead.
+#   Usage: just tools-build-zig raw-stack x86_64-linux-musl
+tools-build-zig TOOL TARGET:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd tools/{{TOOL}}
+    zig build -Dtarget={{TARGET}} -Doptimize=ReleaseSafe
+    ls -la zig-out/bin/
 
 # Trigger the release workflow for an existing tag.
 release-dispatch TAG:

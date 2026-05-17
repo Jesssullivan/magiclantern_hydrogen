@@ -1,0 +1,53 @@
+# Bazel wrap for tools/af-log. See tools/raw-stack/BUILD.bazel for the
+# rationale (genrule + no-sandbox + requires-zig).
+
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "srcs",
+    srcs = glob(["src/**/*.zig"]) + ["build.zig"],
+)
+
+genrule(
+    name = "af-log-native",
+    srcs = [":srcs"],
+    outs = ["af-log-native-bin"],
+    cmd = """
+        ( cd tools/af-log && zig build -Doptimize=ReleaseSafe )
+        cp tools/af-log/zig-out/bin/af-log $@
+    """,
+    tags = ["no-sandbox", "requires-zig"],
+)
+
+genrule(
+    name = "af-log-linux-x86_64",
+    srcs = [":srcs"],
+    outs = ["af-log-linux-x86_64-bin"],
+    cmd = """
+        ( cd tools/af-log && zig build -Dtarget=x86_64-linux-musl -Doptimize=ReleaseSafe )
+        cp tools/af-log/zig-out/bin/af-log $@
+    """,
+    tags = ["no-sandbox", "requires-zig"],
+)
+
+genrule(
+    name = "af-log-macos-aarch64",
+    srcs = [":srcs"],
+    outs = ["af-log-macos-aarch64-bin"],
+    cmd = """
+        ( cd tools/af-log && zig build -Dtarget=aarch64-macos -Doptimize=ReleaseSafe )
+        cp tools/af-log/zig-out/bin/af-log $@
+    """,
+    tags = ["no-sandbox", "requires-zig"],
+)
+
+alias(
+    name = "af-log",
+    actual = ":af-log-native",
+)
+
+sh_test(
+    name = "test",
+    srcs = ["test_runner.sh"],
+    tags = ["no-sandbox", "requires-zig"],
+)

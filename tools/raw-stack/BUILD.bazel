@@ -1,0 +1,73 @@
+# Bazel wrap for tools/raw-stack.
+#
+# Bazel orchestrates; `zig build` does the actual compilation. The
+# Bazel action cache caches the genrule outputs by input hash, so
+# re-runs without source changes are no-ops. RBE / Flywheel attic
+# integration come along for free with the standard `--config=ci-cached`
+# / `--config=executor-backed` rc paths defined in `.bazelrc`.
+#
+# Tag `no-sandbox`: zig writes alongside the source tree (`zig-out/`,
+# `.zig-cache/`); Bazel's read-only sandbox would block this. The genrule
+# remains hermetic-by-content because srcs include every `.zig` source.
+#
+# Tag `requires-zig`: documents that the action needs `zig` on PATH
+# (provided by `nix develop` or `nix shell nixpkgs#zig_0_14 --command`
+# in CI).
+
+package(default_visibility = ["//visibility:public"])
+
+# Every input that affects the output. Genrules cache-key against this.
+filegroup(
+    name = "srcs",
+    srcs = glob(["src/**/*.zig"]) + ["build.zig"],
+)
+
+# Per-target binaries. The same source tree builds for every shipped
+# host platform via Zig 0.14's cross-target story.
+
+genrule(
+    name = "raw-stack-native",
+    srcs = [":srcs"],
+    outs = ["raw-stack-native-bin"],
+    cmd = """
+        ( cd tools/raw-stack && zig build -Doptimize=ReleaseSafe )
+        cp tools/raw-stack/zig-out/bin/raw-stack $@
+    """,
+    tags = ["no-sandbox", "requires-zig"],
+)
+
+genrule(
+    name = "raw-stack-linux-x86_64",
+    srcs = [":srcs"],
+    outs = ["raw-stack-linux-x86_64-bin"],
+    cmd = """
+        ( cd tools/raw-stack && zig build -Dtarget=x86_64-linux-musl -Doptimize=ReleaseSafe )
+        cp tools/raw-stack/zig-out/bin/raw-stack $@
+    """,
+    tags = ["no-sandbox", "requires-zig"],
+)
+
+genrule(
+    name = "raw-stack-macos-aarch64",
+    srcs = [":srcs"],
+    outs = ["raw-stack-macos-aarch64-bin"],
+    cmd = """
+        ( cd tools/raw-stack && zig build -Dtarget=aarch64-macos -Doptimize=ReleaseSafe )
+        cp tools/raw-stack/zig-out/bin/raw-stack $@
+    """,
+    tags = ["no-sandbox", "requires-zig"],
+)
+
+# `bazel build //tools/raw-stack` builds the native target.
+alias(
+    name = "raw-stack",
+    actual = ":raw-stack-native",
+)
+
+# Unit tests — invokes `zig build test` so existing test discovery
+# (every `test "..."` block under src/) just works.
+sh_test(
+    name = "test",
+    srcs = ["test_runner.sh"],
+    tags = ["no-sandbox", "requires-zig"],
+)

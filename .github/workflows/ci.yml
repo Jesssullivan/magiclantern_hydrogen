@@ -119,6 +119,35 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  bazel-tools:
+    # Smoke that the Bazel-wrap of the Zig host tools resolves. Builds
+    # the linux_x86_64 target for both tools (matches what _build-tools.yml
+    # ships) and runs `bazel test //tools/...` (which shells out to
+    # `zig build test`). Exercises action cache via .bazelrc ci-cached
+    # config when ATTIC_* secrets are present.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - uses: DeterminateSystems/nix-installer-action@v14
+        with:
+          extra-conf: |
+            experimental-features = nix-command flakes
+            extra-substituters = ${{ vars.ATTIC_SERVER || 'https://nix-cache.tinyland.dev' }}/${{ vars.ATTIC_CACHE || 'main' }}
+            extra-trusted-public-keys = ${{ secrets.ATTIC_PUBLIC_KEY }}
+      - name: bazel build tools (linux_x86_64)
+        run: |
+          nix develop --command \
+            bazelisk build //tools/raw-stack:raw-stack-linux-x86_64 //tools/af-log:af-log-linux-x86_64
+      - name: bazel test tools (zig build test under sh_test)
+        run: nix develop --command bazelisk test //tools/...
+      - name: verify Bazel output binaries exist
+        run: |
+          ls -la bazel-bin/tools/raw-stack/ bazel-bin/tools/af-log/
+          file bazel-bin/tools/raw-stack/raw-stack-linux-x86_64-bin
+          file bazel-bin/tools/af-log/af-log-linux-x86_64-bin
+
   zig-tools-integration:
     # End-to-end: build both Zig tools, generate a synthetic MLV
     # fixture, decode it, assert expected counts. Catches block-layout
