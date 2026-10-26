@@ -86,7 +86,9 @@ fi
 
 case "${command}" in
 info)
-  exec "${bazel_bin}" info "${external_fetch_args[@]}" "$@"
+  # One-shot query: --batch exits with the command and leaves no server
+  # (TIN-5770, R472).
+  exec "${bazel_bin}" --batch info "${external_fetch_args[@]}" "$@"
   ;;
 *)
   bazel_config="ci-cached"
