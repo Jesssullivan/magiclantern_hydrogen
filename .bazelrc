@@ -6,6 +6,11 @@
 # strict cache-attachment contract validates. Mirrors the contract in
 # ../GloriousFlywheel/.bazelrc.
 
+# Bound the client server: an idle server exits after 120 s instead of the
+# 3 h Bazel default, so a one-off `just tools-build` does not leave a JVM
+# behind (TIN-5770, R470).
+startup --max_idle_secs=120
+
 # Bzlmod is the source of truth for module deps.
 common --enable_bzlmod
 
@@ -42,7 +47,10 @@ common --http_timeout_scaling=2.0
 # contract.
 
 build:ci-cached --config=ci
-build:ci-cached --remote_upload_local_results=true
+# Read-only cache attachment: no caller deposit of locally built results,
+# and no silent local re-run when the remote side fails (TIN-5770, R471).
+build:ci-cached --remote_upload_local_results=false
+build:ci-cached --remote_local_fallback=false
 build:ci-cached --remote_download_minimal
 build:ci-cached --remote_timeout=60
 

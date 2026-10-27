@@ -52,7 +52,10 @@ info:
     echo "python            : $(python3 --version)"
     echo "lua               : $(lua -v 2>&1 | head -1)"
     echo "qemu-system-arm   : $(qemu-system-arm --version | head -1)"
-    echo "bazelisk          : $(bazelisk version 2>/dev/null | head -1 || echo unset)"
+    # --version reads the pinned release without starting a Bazel server
+    # (TIN-5770, R472).
+    echo "bazelisk          : $(bazelisk --version 2>/dev/null | head -1 || echo unset)"
+    echo "bazel (pinned)    : $(cat .bazelversion 2>/dev/null || echo unset)"
     echo "git-cliff         : $(git-cliff --version)"
     echo "just              : $(just --version)"
     echo ""
@@ -338,12 +341,14 @@ release-notes-preview TAG:
 #   Usage: just tools-build raw-stack linux-x86_64
 #          just tools-build af-log   macos-aarch64
 #          just tools-build raw-stack native
-# Goes through Bazel (//tools/<TOOL>:<TOOL>-<TARGET>) so the action cache
-# kicks in and the Flywheel attic / RBE story applies. Bazel orchestrates;
+# Local, non-qualifying: runs plain local Bazel with no remote lane, so
+# its result is not flywheel evidence (TIN-5770, R471). Use
+# `just bazel-build-cached` for the cache-backed path. Bazel orchestrates;
 # zig build does the actual compilation under nix develop.
 tools-build TOOL TARGET:
     #!/usr/bin/env bash
     set -euo pipefail
+    echo "tools-build: local, non-qualifying (no remote lane attached)"
     bazelisk build //tools/{{TOOL}}:{{TOOL}}-{{TARGET}}
     ls -la bazel-bin/tools/{{TOOL}}/
 
